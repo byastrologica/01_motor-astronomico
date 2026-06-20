@@ -1,5 +1,5 @@
 {
-  "name": "motor-astronomico",
+  "name": "01_motor-astronomico",
   "version": "1.0.0",
   "description": "API publica de dados astronomicos baseada na Swiss Ephemeris",
   "license": "AGPL-3.0-only",
