@@ -30,4 +30,12 @@ test("v1 permanece sem o novo contrato e v2 e aditivo", async () => {
     assert.equal(after.speedLongitude, before.speedLongitude);
     assert.ok(after.motion);
   }
+  const venus = v2.body.chart.objects.find((object) => object.id === "VENUS");
+  assert.equal(venus.motionAudit.initialSearchWindowDays, 120);
+  assert.equal(venus.motionAudit.maximumSearchWindowDays, 400);
+  assert.equal(venus.motionAudit.searchStepHours, 12);
+  assert.ok(Number.isFinite(venus.motionAudit.previousSearchedDays));
+  assert.ok(Number.isFinite(venus.motionAudit.nextSearchedDays));
+  assert.match(venus.motionAudit.previousSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(venus.motionAudit.nextSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
 });

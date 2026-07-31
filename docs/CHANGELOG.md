@@ -1,5 +1,7 @@
 # Changelog
 
+- Added closure audit fields for directional station-search coverage and separated cold/prebuild versus warm-cache benchmark evidence.
+
 ## 1.1.0 - 2026-07-31
 
 - Added versioned `POST /v2/chart` with `PLANETARY_STATIONARY_STATE_V1`.

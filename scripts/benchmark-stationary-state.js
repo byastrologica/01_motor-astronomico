@@ -42,6 +42,9 @@ function runCharts(count) {
     p95Ms: Number(percentile(elapsed, 0.95).toFixed(3)),
     maximumMs: Number(Math.max(...elapsed).toFixed(3)),
     cacheHitRatio: cacheLookups ? Number((cacheHits / cacheLookups).toFixed(6)) : 0,
+    cacheLookups,
+    cacheHits,
+    rootSearches,
     averageRootSearchesPerChart: Number((rootSearches / count).toFixed(6)),
     timeouts,
     partialResults: partial,
@@ -54,7 +57,8 @@ const singleChartWarmCache = runCharts(1);
 clearStationEventCache();
 const hundredChartsSameYear = runCharts(100);
 clearStationEventCache();
-const batch1400 = runCharts(1400);
+const batch1400ColdPrebuild = runCharts(1400);
+const batch1400WarmCache = runCharts(1400);
 
 process.stdout.write(`${JSON.stringify({
   benchmark: "PLANETARY_STATIONARY_STATE_V1",
@@ -63,5 +67,6 @@ process.stdout.write(`${JSON.stringify({
   singleChartColdCache,
   singleChartWarmCache,
   hundredChartsSameYear,
-  batch1400,
+  batch1400ColdPrebuild,
+  batch1400WarmCache,
 }, null, 2)}\n`);

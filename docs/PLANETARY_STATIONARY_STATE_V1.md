@@ -26,10 +26,23 @@ The implementation uses request reuse plus a bounded, sorted in-memory station-e
 
 Run `npm run benchmark:stationary`. The reference run on 2026-07-31 produced:
 
-- cold cache: 91.139 ms;
-- warm cache: 9.360 ms;
-- 100 charts: 1,558.225 ms, 94.81% event-cache hits;
-- 1,400 charts: 6,380.452 ms, 99.22% event-cache hits;
+- cold cache: 102.424 ms, 16 root searches;
+- warm cache: 9.145 ms, zero root searches;
+- 100 charts: 1,493.224 ms, 94.81% event-cache hits;
+- 1,400-chart cold/prebuild phase: 7,730.375 ms, 174 root searches and 99.22% event-cache hits;
+- 1,400-chart warm phase: 7,402.308 ms, zero root searches and 100% event-cache hits;
 - timeouts: zero.
 
 Partial results are explicit safe degradations when one adjacent station is outside the configured search window. They never emit an inferred `SD` or `SR`. These measurements describe the current process and are not a production SLA or homologated continuous throughput.
+
+## Closure evidence
+
+The implemented state rule is `THRESHOLD_WINDOW_WITH_CONFIRMED_EXACT_STATION`:
+
+- both adjacent exact stations must be confirmed;
+- instantaneous absolute speed must be within the body threshold;
+- the nearest confirmed transition determines `SD` (`R_TO_D`) or `SR` (`D_TO_R`).
+
+`EXACT_ROOT_INSTANT_ONLY` is not the implemented policy.
+
+The original Venus maximum search window remains 400 days pending formal calibration approval. A 1982 reference chart proved the next station at approximately 477 days, and an annual 1900-2100 sample found adjacent-station distances up to approximately 584 days. The proposed technical calibration is 600 days; it is not applied by this evidence-only update.

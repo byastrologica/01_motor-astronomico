@@ -134,14 +134,30 @@ function searchDirection({
   let samples = 1;
 
   while (scannedDays < bodyProfile.maximumSearchWindowDays) {
-    if (Date.now() > deadline) return { status: "TIMEOUT", expansions, samples };
+    if (Date.now() > deadline) {
+      return {
+        status: "TIMEOUT",
+        expansions,
+        samples,
+        searchedDays: scannedDays,
+        searchEndJulianDay: edgeJulianDay,
+      };
+    }
     const targetDays = Math.min(windowDays, bodyProfile.maximumSearchWindowDays);
     while (scannedDays < targetDays) {
       const increment = Math.min(stepDays, targetDays - scannedDays);
       const candidateJulianDay = edgeJulianDay + direction * increment;
       const candidateSpeed = speedAt(candidateJulianDay);
       samples += 1;
-      if (!Number.isFinite(candidateSpeed)) return { status: "EPHEMERIS_ERROR", expansions, samples };
+      if (!Number.isFinite(candidateSpeed)) {
+        return {
+          status: "EPHEMERIS_ERROR",
+          expansions,
+          samples,
+          searchedDays: scannedDays + increment,
+          searchEndJulianDay: candidateJulianDay,
+        };
+      }
       const hasEndpointRoot = Math.abs(candidateSpeed) <= profile.stationRootSpeedToleranceDegPerDay ||
         Math.abs(edgeSpeed) <= profile.stationRootSpeedToleranceDegPerDay;
       if (hasEndpointRoot || oppositeNonZeroSigns(candidateSpeed, edgeSpeed, profile.numericZeroToleranceDegPerDay)) {
@@ -152,9 +168,26 @@ function searchDirection({
           profile,
           deadline,
         });
-        if (root.status !== "COMPUTED") return { ...root, expansions, samples };
+        if (root.status !== "COMPUTED") {
+          return {
+            ...root,
+            expansions,
+            samples,
+            searchedDays: scannedDays + increment,
+            searchEndJulianDay: candidateJulianDay,
+          };
+        }
         const verification = verifyStation(root, speedAt, profile);
-        if (verification.status !== "COMPUTED") return { ...verification, expansions, samples, iterations: root.iterations };
+        if (verification.status !== "COMPUTED") {
+          return {
+            ...verification,
+            expansions,
+            samples,
+            iterations: root.iterations,
+            searchedDays: scannedDays + increment,
+            searchEndJulianDay: candidateJulianDay,
+          };
+        }
         const event = storeStationEvent(bodyId, {
           julianDay: root.julianDay,
           exactStationUtc: julianDayToUtc(root.julianDay),
@@ -163,7 +196,15 @@ function searchDirection({
           rootIterations: root.iterations,
           rootAlgorithm: root.algorithm,
         }, profile);
-        return { status: "COMPUTED", event, expansions, samples, iterations: root.iterations };
+        return {
+          status: "COMPUTED",
+          event,
+          expansions,
+          samples,
+          iterations: root.iterations,
+          searchedDays: scannedDays + increment,
+          searchEndJulianDay: candidateJulianDay,
+        };
       }
       scannedDays += increment;
       edgeJulianDay = candidateJulianDay;
@@ -180,6 +221,8 @@ function searchDirection({
     status: direction < 0 ? "PREVIOUS_STATION_NOT_FOUND" : "NEXT_STATION_NOT_FOUND",
     expansions,
     samples,
+    searchedDays: scannedDays,
+    searchEndJulianDay: edgeJulianDay,
   };
 }
 
@@ -240,10 +283,26 @@ export function calculateStationaryState({
   );
   const cached = nearestCachedStations(bodyId, instantJulianDay, profile);
   const previousResult = cached.previous
-    ? { status: "COMPUTED", event: cached.previous, expansions: 0, samples: 0, iterations: 0 }
+    ? {
+      status: "COMPUTED",
+      event: cached.previous,
+      expansions: 0,
+      samples: 0,
+      iterations: 0,
+      searchedDays: 0,
+      searchEndJulianDay: cached.previous.julianDay,
+    }
     : searchDirection({ bodyId, instantJulianDay, direction: -1, bodyProfile, speedAt, profile, deadline });
   const nextResult = cached.next
-    ? { status: "COMPUTED", event: cached.next, expansions: 0, samples: 0, iterations: 0 }
+    ? {
+      status: "COMPUTED",
+      event: cached.next,
+      expansions: 0,
+      samples: 0,
+      iterations: 0,
+      searchedDays: 0,
+      searchEndJulianDay: cached.next.julianDay,
+    }
     : searchDirection({ bodyId, instantJulianDay, direction: 1, bodyProfile, speedAt, profile, deadline });
   const previous = previousResult.event ? {
     ...previousResult.event,
@@ -297,7 +356,17 @@ export function calculateStationaryState({
       stationSearchStartUtc: julianDayToUtc(instantJulianDay),
       stationSearchEndUtc: new Date().toISOString(),
       searchStepHours: bodyProfile.initialSearchStepHours,
+      initialSearchWindowDays: bodyProfile.initialSearchWindowDays,
+      maximumSearchWindowDays: bodyProfile.maximumSearchWindowDays,
       searchWindowExpansions: Math.max(previousResult.expansions ?? 0, nextResult.expansions ?? 0),
+      previousSearchedDays: previousResult.searchedDays ?? null,
+      nextSearchedDays: nextResult.searchedDays ?? null,
+      previousSearchEndUtc: Number.isFinite(previousResult.searchEndJulianDay)
+        ? julianDayToUtc(previousResult.searchEndJulianDay)
+        : null,
+      nextSearchEndUtc: Number.isFinite(nextResult.searchEndJulianDay)
+        ? julianDayToUtc(nextResult.searchEndJulianDay)
+        : null,
       rootAlgorithm: "BRENT_WITH_BISECTION_FALLBACK",
       rootIterationsPrevious: previousResult.iterations ?? null,
       rootIterationsNext: nextResult.iterations ?? null,
