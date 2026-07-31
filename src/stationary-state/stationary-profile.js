@@ -18,51 +18,27 @@ export const STATIONARY_PROFILE = Object.freeze({
   eligibleBodies: Object.freeze({
     MERCURIO: Object.freeze({
       stationaryThresholdArcsecPerDay: 300,
-      initialSearchStepHours: 6,
-      initialSearchWindowDays: 45,
-      maximumSearchWindowDays: 180,
     }),
     VENUS: Object.freeze({
       stationaryThresholdArcsecPerDay: 180,
-      initialSearchStepHours: 12,
-      initialSearchWindowDays: 120,
-      maximumSearchWindowDays: 400,
     }),
     MARTE: Object.freeze({
       stationaryThresholdArcsecPerDay: 90,
-      initialSearchStepHours: 24,
-      initialSearchWindowDays: 240,
-      maximumSearchWindowDays: 900,
     }),
     JUPITER: Object.freeze({
       stationaryThresholdArcsecPerDay: 60,
-      initialSearchStepHours: 24,
-      initialSearchWindowDays: 180,
-      maximumSearchWindowDays: 500,
     }),
     SATURNO: Object.freeze({
       stationaryThresholdArcsecPerDay: 60,
-      initialSearchStepHours: 24,
-      initialSearchWindowDays: 180,
-      maximumSearchWindowDays: 500,
     }),
     URANO: Object.freeze({
       stationaryThresholdArcsecPerDay: 20,
-      initialSearchStepHours: 48,
-      initialSearchWindowDays: 180,
-      maximumSearchWindowDays: 500,
     }),
     NETUNO: Object.freeze({
       stationaryThresholdArcsecPerDay: 10,
-      initialSearchStepHours: 48,
-      initialSearchWindowDays: 180,
-      maximumSearchWindowDays: 500,
     }),
     PLUTAO: Object.freeze({
       stationaryThresholdArcsecPerDay: 10,
-      initialSearchStepHours: 48,
-      initialSearchWindowDays: 180,
-      maximumSearchWindowDays: 500,
     }),
   }),
 });

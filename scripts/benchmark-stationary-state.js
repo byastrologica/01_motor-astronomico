@@ -20,6 +20,8 @@ function runCharts(count) {
   let rootSearches = 0;
   let timeouts = 0;
   let partial = 0;
+  let searchWindowExceeded = 0;
+  let stationaryUnresolved = 0;
   for (let index = 0; index < count; index += 1) {
     const startedAt = performance.now();
     const chart = generateRawChartV2({ ...baseInput, date: dateForIndex(index) });
@@ -31,6 +33,9 @@ function runCharts(count) {
       rootSearches += object.motionAudit.rootSearchesPerformed ?? 0;
       if (object.motion.stationCalculationStatus === "TIMEOUT") timeouts += 1;
       if (object.motion.stationCalculationStatus === "PARTIAL") partial += 1;
+      searchWindowExceeded += Number(object.motionAudit.previousSearchStatus === "SEARCH_WINDOW_EXCEEDED");
+      searchWindowExceeded += Number(object.motionAudit.nextSearchStatus === "SEARCH_WINDOW_EXCEEDED");
+      stationaryUnresolved += Number(object.motion.motionState === "STATIONARY_UNRESOLVED");
     }
   }
   const total = elapsed.reduce((sum, value) => sum + value, 0);
@@ -44,10 +49,13 @@ function runCharts(count) {
     cacheHitRatio: cacheLookups ? Number((cacheHits / cacheLookups).toFixed(6)) : 0,
     cacheLookups,
     cacheHits,
+    cacheMisses: cacheLookups - cacheHits,
     rootSearches,
     averageRootSearchesPerChart: Number((rootSearches / count).toFixed(6)),
     timeouts,
     partialResults: partial,
+    searchWindowExceeded,
+    stationaryUnresolved,
   };
 }
 

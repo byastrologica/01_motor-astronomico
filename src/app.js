@@ -16,7 +16,7 @@ app.use(express.json({ limit: "100kb" }));
 app.get("/", (request, response) => {
   response.status(200).json({
     service: "Motor Astronomico",
-    version: "1.1.0",
+    version: "1.2.0",
     status: "online",
     description: "API publica de dados astronomicos",
     endpoints: {
@@ -53,7 +53,7 @@ app.post("/v2/chart", (request, response, next) => {
     response.status(200).json({
       outputMode: "FULL",
       outputSchemaVersion: "astronomical_output_v2",
-      features: ["PLANETARY_STATIONARY_STATE_V1"],
+      features: ["PLANETARY_STATIONARY_STATE_V1", "STATIONARY_UNRESOLVED"],
       chart,
     });
   } catch (error) {

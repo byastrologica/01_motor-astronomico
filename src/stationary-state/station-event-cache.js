@@ -23,10 +23,11 @@ function enforceLimit(maximumEntries) {
   }
 }
 
-export function storeStationEvent(bodyId, event, profile = STATIONARY_PROFILE) {
+export function storeStationEvent(bodyId, event, profile = STATIONARY_PROFILE, namespace = "LEGACY") {
   const now = Date.now();
   removeExpired(now, profile.cache.ttlMs);
-  const entries = eventsByBody.get(bodyId) ?? [];
+  const cacheKey = `${namespace}|${bodyId}`;
+  const entries = eventsByBody.get(cacheKey) ?? [];
   const toleranceDays = profile.stationRootToleranceSeconds / 86400;
   const duplicate = entries.find(
     (entry) => Math.abs(entry.julianDay - event.julianDay) <= toleranceDays,
@@ -38,15 +39,15 @@ export function storeStationEvent(bodyId, event, profile = STATIONARY_PROFILE) {
   const cached = { ...event, cachedAt: now, lastAccessedAt: now };
   entries.push(cached);
   entries.sort((left, right) => left.julianDay - right.julianDay);
-  eventsByBody.set(bodyId, entries);
+  eventsByBody.set(cacheKey, entries);
   enforceLimit(profile.cache.maximumEntries);
   return cached;
 }
 
-export function nearestCachedStations(bodyId, instantJulianDay, profile = STATIONARY_PROFILE) {
+export function nearestCachedStations(bodyId, instantJulianDay, profile = STATIONARY_PROFILE, namespace = "LEGACY") {
   const now = Date.now();
   removeExpired(now, profile.cache.ttlMs);
-  const entries = eventsByBody.get(bodyId) ?? [];
+  const entries = eventsByBody.get(`${namespace}|${bodyId}`) ?? [];
   let low = 0;
   let high = entries.length;
   while (low < high) {

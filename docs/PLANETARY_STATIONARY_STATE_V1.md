@@ -6,52 +6,59 @@ The canonical implementation is exposed by `POST /v2/chart`. `POST /v1/chart` re
 
 ## Contract
 
+- Service version: `1.2.0`.
+- Motion schema and stationary-state contract: `1.1.0`.
 - Profile: `ASTRODIENST_STATIONARY_PROFILE_V1`.
-- States: `D`, `R`, `SD`, `SR`.
+- Search configuration: `STATION_SEARCH_CONFIG_V1` version `1.0.0`.
+- States: `D`, `R`, `SD`, `SR`, `STATIONARY_UNRESOLVED`, `UNKNOWN`, `NOT_APPLICABLE`.
 - Exact station: bracketed search over `speedLongitude(t) = 0` with safeguarded Brent/secant and bisection fallback.
 - Verification: sign change at five minutes before and after the root.
-- `SD/SR` requires both previous and next confirmed stations.
-- Any incomplete search degrades safely to `D/R` from instantaneous speed.
+- `SD/SR` requires confirmed adjacent stations and a speed inside the body threshold.
+- An incomplete or inconclusive search inside the threshold emits `STATIONARY_UNRESOLVED` rather than a false `D/R`.
+- An incomplete search outside the threshold preserves `D/R` from instantaneous speed.
+- Missing speed emits `UNKNOWN`; ineligible bodies emit `NOT_APPLICABLE`.
 - Canonical source: Swiss Ephemeris through this service only.
+
+`STATIONARY_UNRESOLVED` means that the body is inside the homologated stationary threshold, but the available evidence cannot safely determine whether the associated station is direct or retrograde. It is not a third kind of station.
+
+## Venus calibration
+
+Venus uses an independent search in each temporal direction:
+
+```text
+initialSearchWindowDays = 120
+maximumSearchWindowDays = 600
+searchStepHours = 12
+expansion = 120 -> 240 -> 480 -> 600
+calibrationStatus = ASTROLOGICA_APPROVED
+calibrationReason = ADJACENT_VENUS_STATION_BEYOND_400_DAYS
+```
+
+The 600-day boundary is inclusive and is compared with Julian Day precision, not rounded presentation values. The calibrated evidence range is `1900-01-01T00:00:00Z` through `2100-12-31T23:59:59Z`. The same operational limit may be used outside that range without claiming statistically homologated coverage.
 
 ## Compatibility
 
-The new fields are additive under `object.motion` and `object.motionAudit` in schema V2. No Coordinate Sheet V1, SOP, Aspectario, ranking, orb, Module 1, or GEM contract is changed.
+The fields remain additive under `object.motion` and `object.motionAudit` in schema V2. No Coordinate Sheet V1, SOP, Aspectario, ranking, orb, Module 1, or GEM contract is changed.
 
-## Cache
+## Audit and cache
 
-The implementation uses request reuse plus a bounded, sorted in-memory station-event cache with TTL and binary nearest-event lookup. Cached events contain astronomical data only. A persistent precomputed event index remains an operational optimization for a future durable batch runner; it does not change classification semantics.
+Directional audit records searched days, status, source, event distance, maximum-window exhaustion and expansion count independently for previous and next searches. Search sources are controlled enums, including `MEMORY_CACHE` and `ROOT_SEARCH`.
+
+The bounded in-memory cache is namespaced by search configuration id/version, body, maximum window, step, algorithm version and ephemeris signature. Results from the former Venus 400-day configuration cannot be reused under the 600-day contract.
 
 ## Benchmark
 
-Run `npm run benchmark:stationary`. The reference run on 2026-07-31 produced:
+Run `npm run benchmark:stationary`. The calibrated reference run on 2026-07-31 produced:
 
-- cold cache: 102.424 ms, 16 root searches;
-- warm cache: 9.145 ms, zero root searches;
-- 100 charts: 1,493.224 ms, 94.81% event-cache hits;
-- 1,400-chart cold/prebuild phase: 7,730.375 ms, 174 root searches and 99.22% event-cache hits;
-- 1,400-chart warm phase: 7,402.308 ms, zero root searches and 100% event-cache hits;
-- timeouts: zero.
+- cold single chart: 78.059 ms, 16 cache misses and 16 root searches;
+- warm single chart: 5.731 ms, 16/16 cache hits and zero root searches;
+- 100 charts: 503.165 ms total, 5.032 ms average and 8.128 ms p95;
+- 1,400-chart cold/prebuild phase: 5,075.940 ms total, 3.626 ms average, 35 root searches;
+- 1,400-chart warm phase: 5,423.720 ms total, 3.874 ms average, 22,400/22,400 cache hits;
+- timeouts, maximum-window exhaustion and unresolved states: zero in this benchmark sample.
 
-Partial results are explicit safe degradations when one adjacent station is outside the configured search window. They never emit an inferred `SD` or `SR`. These measurements describe the current process and are not a production SLA or homologated continuous throughput.
+These measurements are a `BATCH_BENCHMARK`, not a production SLA or homologated continuous throughput.
 
-## Closure evidence
+## Yona regression
 
-The implemented state rule is `THRESHOLD_WINDOW_WITH_CONFIRMED_EXACT_STATION`:
-
-- both adjacent exact stations must be confirmed;
-- instantaneous absolute speed must be within the body threshold;
-- the nearest confirmed transition determines `SD` (`R_TO_D`) or `SR` (`D_TO_R`).
-
-`EXACT_ROOT_INSTANT_ONLY` is not the implemented policy.
-
-Directional audit semantics distinguish work from evidence:
-
-- `previousSearchSource` / `nextSearchSource` identify `CACHE` or `ROOT_SEARCH`;
-- `previousSearchedDays` / `nextSearchedDays` report work performed in the current request;
-- `previousEventDistanceDays` / `nextEventDistanceDays` report astronomical distance to the recovered event.
-
-A warm-cache request may therefore report `searchedDays = 0` while preserving
-the event-distance evidence explicitly.
-
-The original Venus maximum search window remains 400 days pending formal calibration approval. A 1982 reference chart proved the next station at approximately 477 days, and an annual 1900-2100 sample found adjacent-station distances up to approximately 584 days. The proposed technical calibration is 600 days; it is not applied by this evidence-only update.
+The reference chart recovers Venus with a previous station at approximately 62.498 days and a next station at approximately 476.464 days. Venus remains `D / COMPUTED`; Uranus, Neptune and Pluto remain `R / COMPUTED`.

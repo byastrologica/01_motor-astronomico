@@ -1,7 +1,18 @@
 import { nearestCachedStations, storeStationEvent } from "./station-event-cache.js";
 import { STATIONARY_PROFILE, stationaryBodyProfile } from "./stationary-profile.js";
+import {
+  STATION_SEARCH_CONFIG,
+  stationSearchBodyConfig,
+  stationSearchCacheNamespace,
+} from "./station-search-config.js";
 
 const SECONDS_PER_DAY = 86400;
+
+export function isWithinSearchWindow(eventJulianDay, instantJulianDay, maximumSearchWindowDays) {
+  if (!Number.isFinite(eventJulianDay) || !Number.isFinite(instantJulianDay)) return false;
+  const distanceSeconds = Math.abs(eventJulianDay - instantJulianDay) * SECONDS_PER_DAY;
+  return distanceSeconds <= maximumSearchWindowDays * SECONDS_PER_DAY;
+}
 
 export function julianDayToUtc(julianDay) {
   return new Date((julianDay - 2440587.5) * 86400000).toISOString();
@@ -121,19 +132,21 @@ function searchDirection({
   instantJulianDay,
   direction,
   bodyProfile,
+  searchConfig,
+  cacheNamespace,
   speedAt,
   profile,
   deadline,
 }) {
-  const stepDays = bodyProfile.initialSearchStepHours / 24;
+  const stepDays = searchConfig.searchStepHours / 24;
   let scannedDays = 0;
-  let windowDays = Math.min(bodyProfile.initialSearchWindowDays, bodyProfile.maximumSearchWindowDays);
+  let windowDays = Math.min(searchConfig.initialSearchWindowDays, searchConfig.maximumSearchWindowDays);
   let edgeJulianDay = instantJulianDay;
   let edgeSpeed = speedAt(edgeJulianDay);
   let expansions = 0;
   let samples = 1;
 
-  while (scannedDays < bodyProfile.maximumSearchWindowDays) {
+  while (scannedDays < searchConfig.maximumSearchWindowDays) {
     if (Date.now() > deadline) {
       return {
         status: "TIMEOUT",
@@ -143,7 +156,7 @@ function searchDirection({
         searchEndJulianDay: edgeJulianDay,
       };
     }
-    const targetDays = Math.min(windowDays, bodyProfile.maximumSearchWindowDays);
+    const targetDays = Math.min(windowDays, searchConfig.maximumSearchWindowDays);
     while (scannedDays < targetDays) {
       const increment = Math.min(stepDays, targetDays - scannedDays);
       const candidateJulianDay = edgeJulianDay + direction * increment;
@@ -195,7 +208,7 @@ function searchDirection({
           rootSpeedDegPerDay: root.speed,
           rootIterations: root.iterations,
           rootAlgorithm: root.algorithm,
-        }, profile);
+        }, profile, cacheNamespace);
         return {
           status: "COMPUTED",
           event,
@@ -210,10 +223,10 @@ function searchDirection({
       edgeJulianDay = candidateJulianDay;
       edgeSpeed = candidateSpeed;
     }
-    if (targetDays >= bodyProfile.maximumSearchWindowDays) break;
+    if (targetDays >= searchConfig.maximumSearchWindowDays) break;
     windowDays = Math.min(
       windowDays * profile.searchWindowExpansionFactor,
-      bodyProfile.maximumSearchWindowDays,
+      searchConfig.maximumSearchWindowDays,
     );
     expansions += 1;
   }
@@ -257,19 +270,21 @@ export function calculateStationaryState({
   speedAt,
   ephemeris,
   profile = STATIONARY_PROFILE,
+  stationSearchConfig = STATION_SEARCH_CONFIG,
   allBodiesDeadline = Number.POSITIVE_INFINITY,
 }) {
   const startedAt = Date.now();
   const bodyProfile = stationaryBodyProfile(bodyId, profile);
+  const searchConfig = stationSearchBodyConfig(bodyId, stationSearchConfig);
   const fallback = fallbackMotionState(speedLongitudeDegPerDay, profile.numericZeroToleranceDegPerDay);
-  if (!bodyProfile) {
+  if (!bodyProfile || !searchConfig) {
     return {
       motion: {
         bodyId,
         speedLongitudeDegPerDay,
         speedLongitudeArcsecPerDay: Number.isFinite(speedLongitudeDegPerDay) ? speedLongitudeDegPerDay * 3600 : null,
         motionSignAtInstant: motionSign(speedLongitudeDegPerDay, profile.numericZeroToleranceDegPerDay),
-        motionState: fallback,
+        motionState: "NOT_APPLICABLE",
         stationaryClassificationAvailable: false,
         stationCalculationStatus: "NOT_ELIGIBLE_BODY",
       },
@@ -277,11 +292,39 @@ export function calculateStationaryState({
     };
   }
 
+  if (!Number.isFinite(speedLongitudeDegPerDay)) {
+    return {
+      motion: {
+        bodyId,
+        speedLongitudeDegPerDay: null,
+        speedLongitudeArcsecPerDay: null,
+        motionSignAtInstant: "UNKNOWN",
+        motionState: "UNKNOWN",
+        stationaryClassificationAvailable: false,
+        stationCalculationStatus: "MISSING_SPEED",
+      },
+      motionAudit: {
+        stationSearchConfigId: stationSearchConfig.id,
+        stationSearchConfigVersion: stationSearchConfig.version,
+        previousSearchStatus: "NOT_SEARCHED",
+        nextSearchStatus: "NOT_SEARCHED",
+        calculatedAtUtc: new Date().toISOString(),
+      },
+    };
+  }
+
   const deadline = Math.min(
     startedAt + profile.singleBodyStationSearchTimeoutMs,
     allBodiesDeadline,
   );
-  const cached = nearestCachedStations(bodyId, instantJulianDay, profile);
+  const cacheNamespace = stationSearchCacheNamespace({ bodyId, bodyConfig: searchConfig, ephemeris, config: stationSearchConfig });
+  const cachedRaw = nearestCachedStations(bodyId, instantJulianDay, profile, cacheNamespace);
+  const cached = {
+    previous: isWithinSearchWindow(cachedRaw.previous?.julianDay, instantJulianDay, searchConfig.maximumSearchWindowDays)
+      ? cachedRaw.previous : null,
+    next: isWithinSearchWindow(cachedRaw.next?.julianDay, instantJulianDay, searchConfig.maximumSearchWindowDays)
+      ? cachedRaw.next : null,
+  };
   const previousResult = cached.previous
     ? {
       status: "COMPUTED",
@@ -292,7 +335,7 @@ export function calculateStationaryState({
       searchedDays: 0,
       searchEndJulianDay: cached.previous.julianDay,
     }
-    : searchDirection({ bodyId, instantJulianDay, direction: -1, bodyProfile, speedAt, profile, deadline });
+    : searchDirection({ bodyId, instantJulianDay, direction: -1, bodyProfile, searchConfig, cacheNamespace, speedAt, profile, deadline });
   const nextResult = cached.next
     ? {
       status: "COMPUTED",
@@ -303,7 +346,7 @@ export function calculateStationaryState({
       searchedDays: 0,
       searchEndJulianDay: cached.next.julianDay,
     }
-    : searchDirection({ bodyId, instantJulianDay, direction: 1, bodyProfile, speedAt, profile, deadline });
+    : searchDirection({ bodyId, instantJulianDay, direction: 1, bodyProfile, searchConfig, cacheNamespace, speedAt, profile, deadline });
   const previous = previousResult.event ? {
     ...previousResult.event,
     distanceHours: eventDistanceHours(previousResult.event, instantJulianDay),
@@ -325,6 +368,18 @@ export function calculateStationaryState({
   );
   const timeout = previousResult.status === "TIMEOUT" || nextResult.status === "TIMEOUT";
   const status = bothStations ? "COMPUTED" : timeout ? "TIMEOUT" : "PARTIAL";
+  const resolvedMotionState = bothStations
+    ? classification.motionState
+    : classification.withinThreshold ? "STATIONARY_UNRESOLVED" : fallback;
+  const canonicalSearchStatus = (result) => {
+    if (result.status === "COMPUTED") return "FOUND";
+    if (/NOT_FOUND$/.test(result.status)) return "SEARCH_WINDOW_EXCEEDED";
+    if (result.status === "ROOT_REFINEMENT_MAX_ITERATIONS") return "ROOT_REFINEMENT_FAILED";
+    if (result.status === "ROOT_WITHOUT_CONFIRMED_TRANSITION") return "TRANSITION_NOT_CONFIRMED";
+    return result.status;
+  };
+  const previousSearchStatus = canonicalSearchStatus(previousResult);
+  const nextSearchStatus = canonicalSearchStatus(nextResult);
 
   return {
     motion: {
@@ -332,7 +387,7 @@ export function calculateStationaryState({
       speedLongitudeDegPerDay,
       speedLongitudeArcsecPerDay: speedLongitudeDegPerDay * 3600,
       motionSignAtInstant: classification.sign,
-      motionState: bothStations ? classification.motionState : fallback,
+      motionState: resolvedMotionState,
       stationaryThresholdArcsecPerDay: bodyProfile.stationaryThresholdArcsecPerDay,
       stationaryThresholdDegPerDay: classification.thresholdDegPerDay,
       isWithinStationaryThreshold: classification.withinThreshold,
@@ -348,6 +403,8 @@ export function calculateStationaryState({
       stationaryClassificationAvailable: bothStations,
       stationaryProfileId: profile.id,
       stationaryProfileVersion: profile.version,
+      motionSchemaVersion: "1.1.0",
+      stationaryStateContractVersion: "1.1.0",
       stationCalculationStatus: status,
     },
     motionAudit: {
@@ -355,14 +412,24 @@ export function calculateStationaryState({
       stationRootSpeedToleranceDegPerDay: profile.stationRootSpeedToleranceDegPerDay,
       stationSearchStartUtc: julianDayToUtc(instantJulianDay),
       stationSearchEndUtc: new Date().toISOString(),
-      searchStepHours: bodyProfile.initialSearchStepHours,
-      initialSearchWindowDays: bodyProfile.initialSearchWindowDays,
-      maximumSearchWindowDays: bodyProfile.maximumSearchWindowDays,
-      searchWindowExpansions: Math.max(previousResult.expansions ?? 0, nextResult.expansions ?? 0),
+      stationSearchConfigId: stationSearchConfig.id,
+      stationSearchConfigVersion: stationSearchConfig.version,
+      calibratedEvidenceRange: stationSearchConfig.calibratedEvidenceRange,
+      searchStepHours: searchConfig.searchStepHours,
+      initialSearchWindowDays: searchConfig.initialSearchWindowDays,
+      maximumSearchWindowDays: searchConfig.maximumSearchWindowDays,
+      searchWindowExpansions: {
+        previous: previousResult.expansions ?? 0,
+        next: nextResult.expansions ?? 0,
+      },
       previousSearchedDays: previousResult.searchedDays ?? null,
       nextSearchedDays: nextResult.searchedDays ?? null,
-      previousSearchSource: cached.previous ? "CACHE" : "ROOT_SEARCH",
-      nextSearchSource: cached.next ? "CACHE" : "ROOT_SEARCH",
+      searchSource: {
+        previous: cached.previous ? "MEMORY_CACHE" : "ROOT_SEARCH",
+        next: cached.next ? "MEMORY_CACHE" : "ROOT_SEARCH",
+      },
+      previousSearchSource: cached.previous ? "MEMORY_CACHE" : "ROOT_SEARCH",
+      nextSearchSource: cached.next ? "MEMORY_CACHE" : "ROOT_SEARCH",
       previousEventDistanceDays: previous ? previous.distanceHours / 24 : null,
       nextEventDistanceDays: next ? next.distanceHours / 24 : null,
       previousSearchEndUtc: Number.isFinite(previousResult.searchEndJulianDay)
@@ -374,8 +441,12 @@ export function calculateStationaryState({
       rootAlgorithm: "BRENT_WITH_BISECTION_FALLBACK",
       rootIterationsPrevious: previousResult.iterations ?? null,
       rootIterationsNext: nextResult.iterations ?? null,
-      previousSearchStatus: previousResult.status,
-      nextSearchStatus: nextResult.status,
+      previousSearchStatus,
+      nextSearchStatus,
+      searchWindowExceeded: {
+        previous: previousSearchStatus === "SEARCH_WINDOW_EXCEEDED",
+        next: nextSearchStatus === "SEARCH_WINDOW_EXCEEDED",
+      },
       ephemerisEngine: ephemeris.engine,
       ephemerisVersion: ephemeris.version,
       ephemerisBackend: ephemeris.backend,

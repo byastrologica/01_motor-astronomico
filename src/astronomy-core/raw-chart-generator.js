@@ -335,9 +335,11 @@ export function generateRawChartV2(input) {
     objects,
     metadata: {
       ...chart.metadata,
-      serviceVersion: "1.1.0",
+      serviceVersion: "1.2.0",
       outputSchemaVersion: "astronomical_output_v2",
-      features: ["PLANETARY_STATIONARY_STATE_V1"],
+      motionSchemaVersion: "1.1.0",
+      stationaryStateContractVersion: "1.1.0",
+      features: ["PLANETARY_STATIONARY_STATE_V1", "STATIONARY_UNRESOLVED"],
       stationaryProfileId: STATIONARY_PROFILE.id,
       stationaryProfileVersion: STATIONARY_PROFILE.version,
     },

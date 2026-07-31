@@ -5,11 +5,13 @@ import {
   calculateStationaryState,
   classifyMotion,
   fallbackMotionState,
+  isWithinSearchWindow,
   motionSign,
   refineBracketedRoot,
 } from "../src/stationary-state/stationary-state.js";
 import { clearStationEventCache, stationEventCacheSize, storeStationEvent } from "../src/stationary-state/station-event-cache.js";
 import { STATIONARY_PROFILE } from "../src/stationary-state/stationary-profile.js";
+import { STATION_SEARCH_CONFIG } from "../src/stationary-state/station-search-config.js";
 
 const station = (transition, distanceHours) => ({ transition, distanceHours });
 
@@ -49,7 +51,7 @@ test("velocidade zero usa a transicao, nao o sinal", () => {
   }).motionState, "SR");
 });
 
-test("ausencia de uma estacao degrada para D/R", () => {
+test("classificador local preserva D/R quando nao recebe as duas estacoes", () => {
   assert.equal(classifyMotion({
     speed: -0.01,
     thresholdArcsecPerDay: 300,
@@ -139,6 +141,61 @@ test("timeout degrada para D ou R sem falso estado estacionario", () => {
   assert.equal(result.motion.stationaryClassificationAvailable, false);
 });
 
+test("busca incompleta dentro do threshold retorna STATIONARY_UNRESOLVED", () => {
+  const result = calculateStationaryState({
+    bodyId: "MERCURIO",
+    instantJulianDay: 2450000,
+    speedLongitudeDegPerDay: 0.01,
+    speedAt: () => 0.01,
+    ephemeris: { engine: "TEST", version: "1", backend: "TEST" },
+    allBodiesDeadline: 0,
+  });
+  assert.equal(result.motion.motionState, "STATIONARY_UNRESOLVED");
+  assert.equal(result.motion.stationCalculationStatus, "TIMEOUT");
+});
+
+test("falha de refinamento dentro do threshold retorna STATIONARY_UNRESOLVED", () => {
+  const profile = { ...STATIONARY_PROFILE, maximumRootIterations: 0 };
+  const stationSearchConfig = {
+    ...STATION_SEARCH_CONFIG,
+    eligibleBodies: {
+      ...STATION_SEARCH_CONFIG.eligibleBodies,
+      MERCURIO: { initialSearchWindowDays: 2, maximumSearchWindowDays: 2, searchStepHours: 24 },
+    },
+  };
+  const result = calculateStationaryState({
+    bodyId: "MERCURIO",
+    instantJulianDay: 100,
+    speedLongitudeDegPerDay: 0.01,
+    speedAt: (time) => time - 100.5,
+    ephemeris: { engine: "TEST", version: "1", backend: "TEST" },
+    profile,
+    stationSearchConfig,
+  });
+  assert.equal(result.motion.motionState, "STATIONARY_UNRESOLVED");
+  assert.ok([result.motionAudit.previousSearchStatus, result.motionAudit.nextSearchStatus]
+    .includes("ROOT_REFINEMENT_FAILED"));
+});
+
+test("fronteira da janela de 600 dias e inclusiva e nao arredondada", () => {
+  const instant = 2450000;
+  assert.equal(isWithinSearchWindow(instant + (599 + 86399 / 86400), instant, 600), true);
+  assert.equal(isWithinSearchWindow(instant + 600, instant, 600), true);
+  assert.equal(isWithinSearchWindow(instant + 600 + 1 / 86400, instant, 600), false);
+});
+
+test("velocidade ausente e corpo inelegivel usam enums explicitos", () => {
+  const ephemeris = { engine: "TEST", version: "1", backend: "TEST" };
+  assert.equal(calculateStationaryState({
+    bodyId: "VENUS", instantJulianDay: 2450000, speedLongitudeDegPerDay: Number.NaN,
+    speedAt: () => Number.NaN, ephemeris,
+  }).motion.motionState, "UNKNOWN");
+  assert.equal(calculateStationaryState({
+    bodyId: "SOL", instantJulianDay: 2450000, speedLongitudeDegPerDay: 1,
+    speedAt: () => 1, ephemeris,
+  }).motion.motionState, "NOT_APPLICABLE");
+});
+
 test("erro de efemeride e degradado sem inferir estacionariedade", () => {
   const result = calculateStationaryState({
     bodyId: "MERCURIO",
@@ -166,4 +223,16 @@ test("perfil contem somente os oito corpos homologados", () => {
   assert.deepEqual(Object.keys(STATIONARY_PROFILE.eligibleBodies), [
     "MERCURIO", "VENUS", "MARTE", "JUPITER", "SATURNO", "URANO", "NETUNO", "PLUTAO",
   ]);
+});
+
+test("configuracao operacional de Venus usa 120, 240, 480 e 600 dias", () => {
+  const venus = STATION_SEARCH_CONFIG.eligibleBodies.VENUS;
+  assert.equal(venus.initialSearchWindowDays, 120);
+  assert.equal(venus.maximumSearchWindowDays, 600);
+  assert.equal(venus.searchStepHours, 12);
+  const windows = [venus.initialSearchWindowDays];
+  while (windows.at(-1) < venus.maximumSearchWindowDays) {
+    windows.push(Math.min(windows.at(-1) * 2, venus.maximumSearchWindowDays));
+  }
+  assert.deepEqual(windows, [120, 240, 480, 600]);
 });

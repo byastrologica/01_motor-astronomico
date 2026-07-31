@@ -32,13 +32,25 @@ test("v1 permanece sem o novo contrato e v2 e aditivo", async () => {
   }
   const venus = v2.body.chart.objects.find((object) => object.id === "VENUS");
   assert.equal(venus.motionAudit.initialSearchWindowDays, 120);
-  assert.equal(venus.motionAudit.maximumSearchWindowDays, 400);
+  assert.equal(venus.motionAudit.maximumSearchWindowDays, 600);
   assert.equal(venus.motionAudit.searchStepHours, 12);
   assert.ok(Number.isFinite(venus.motionAudit.previousSearchedDays));
   assert.ok(Number.isFinite(venus.motionAudit.nextSearchedDays));
-  assert.match(venus.motionAudit.previousSearchSource, /^(CACHE|ROOT_SEARCH)$/);
-  assert.match(venus.motionAudit.nextSearchSource, /^(CACHE|ROOT_SEARCH)$/);
+  assert.match(venus.motionAudit.previousSearchSource, /^(MEMORY_CACHE|ROOT_SEARCH)$/);
+  assert.match(venus.motionAudit.nextSearchSource, /^(MEMORY_CACHE|ROOT_SEARCH)$/);
+  assert.equal(v2.body.chart.metadata.serviceVersion, "1.2.0");
+  assert.equal(v2.body.chart.metadata.motionSchemaVersion, "1.1.0");
+  assert.ok(v2.body.chart.metadata.features.includes("STATIONARY_UNRESOLVED"));
   assert.ok(Number.isFinite(venus.motionAudit.previousEventDistanceDays));
   assert.match(venus.motionAudit.previousSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
   assert.match(venus.motionAudit.nextSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(venus.motionAudit.nextSearchStatus, "FOUND");
+  assert.ok(venus.motionAudit.nextEventDistanceDays > 400);
+  assert.ok(venus.motionAudit.nextEventDistanceDays <= 600);
+  const uranus = v2.body.chart.objects.find((object) => object.id === "URANO");
+  const neptune = v2.body.chart.objects.find((object) => object.id === "NETUNO");
+  const pluto = v2.body.chart.objects.find((object) => object.id === "PLUTAO");
+  assert.equal(uranus.motion.motionState, "R");
+  assert.equal(neptune.motion.motionState, "R");
+  assert.equal(pluto.motion.motionState, "R");
 });
