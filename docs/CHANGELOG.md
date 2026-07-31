@@ -1,5 +1,11 @@
 # Changelog
 
+## Closeout - 2026-07-31
+
+- Registered the final technical and operational homologation of `PLANETARY_STATIONARY_STATE_V1`, `ASTRODIENST_STATIONARY_PROFILE_V1` and `STATION_SEARCH_CONFIG_V1` in `docs/PLANETARY_STATIONARY_STATE_V1_CLOSEOUT.md`.
+- Confirmed no technical or methodological blocker, no method change, no RFC, unchanged Coordinate Sheet V1 and unchanged `/v1/chart`. FASE 2B/GEM remains paused.
+- Documentation only; no calculation, endpoint or functional output changed.
+
 ## 1.2.0 - 2026-07-31
 
 - Applied the Astrologica-approved Venus calibration: 120-day initial search, deterministic `120 -> 240 -> 480 -> 600` expansion and an inclusive 600-day maximum in each temporal direction.
