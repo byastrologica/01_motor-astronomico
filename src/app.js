@@ -3,6 +3,7 @@ import cors from "cors";
 
 import {
   generateRawChart,
+  generateRawChartV2,
   ValidationError,
 } from "./astronomy-core/raw-chart-generator.js";
 
@@ -15,12 +16,13 @@ app.use(express.json({ limit: "100kb" }));
 app.get("/", (request, response) => {
   response.status(200).json({
     service: "Motor Astronomico",
-    version: "1.0.0",
+    version: "1.1.0",
     status: "online",
     description: "API publica de dados astronomicos",
     endpoints: {
       health: "GET /health",
       chart: "POST /v1/chart",
+      chartV2: "POST /v2/chart",
     },
   });
 });
@@ -38,6 +40,20 @@ app.post("/v1/chart", (request, response, next) => {
 
     response.status(200).json({
       outputMode: "FULL",
+      chart,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/v2/chart", (request, response, next) => {
+  try {
+    const chart = generateRawChartV2(request.body);
+    response.status(200).json({
+      outputMode: "FULL",
+      outputSchemaVersion: "astronomical_output_v2",
+      features: ["PLANETARY_STATIONARY_STATE_V1"],
       chart,
     });
   } catch (error) {

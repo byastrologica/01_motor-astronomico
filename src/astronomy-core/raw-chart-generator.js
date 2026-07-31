@@ -8,9 +8,12 @@ import {
   calculateHousePosition,
   calculateHouses,
   calculateJulianDay,
+  calculateLongitudeSpeed,
   calculateObliquity,
   getEphemerisVersion,
 } from "./swiss-ephemeris-adapter.js";
+import { calculateStationaryState } from "../stationary-state/stationary-state.js";
+import { STATIONARY_PROFILE } from "../stationary-state/stationary-profile.js";
 
 const BODY_DEFINITIONS = Object.freeze([
   ["SOL", "Sol", "PLANET", true],
@@ -300,6 +303,43 @@ export function generateRawChart(input) {
       mundaneHouseReference: "SWISS_EPHEMERIS_HOUSE_POS",
       generatedAt: new Date().toISOString(),
       warnings,
+    },
+  };
+}
+
+export function generateRawChartV2(input) {
+  const chart = generateRawChart(input);
+  const allBodiesDeadline = Date.now() + STATIONARY_PROFILE.allBodiesStationSearchTimeoutMs;
+  const ephemeris = {
+    engine: "SWISS_EPHEMERIS",
+    version: chart.metadata.ephemerisVersion,
+    backend: "SWIEPH",
+  };
+  const objects = chart.objects.map((object) => {
+    const bodyId = bodyIds[object.id];
+    const stationary = calculateStationaryState({
+      bodyId: object.id,
+      instantJulianDay: chart.time.julianDay,
+      speedLongitudeDegPerDay: object.speedLongitude,
+      speedAt: bodyId === undefined
+        ? () => Number.NaN
+        : (julianDay) => calculateLongitudeSpeed(julianDay, bodyId),
+      ephemeris,
+      allBodiesDeadline,
+    });
+    return { ...object, ...stationary };
+  });
+
+  return {
+    ...chart,
+    objects,
+    metadata: {
+      ...chart.metadata,
+      serviceVersion: "1.1.0",
+      outputSchemaVersion: "astronomical_output_v2",
+      features: ["PLANETARY_STATIONARY_STATE_V1"],
+      stationaryProfileId: STATIONARY_PROFILE.id,
+      stationaryProfileVersion: STATIONARY_PROFILE.version,
     },
   };
 }

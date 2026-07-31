@@ -1,6 +1,6 @@
 {
   "name": "01_motor-astronomico",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "API publica de dados astronomicos baseada na Swiss Ephemeris",
   "license": "AGPL-3.0-only",
   "private": false,
@@ -10,7 +10,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js"
+    "check": "node --check src/server.js",
+    "benchmark:stationary": "node scripts/benchmark-stationary-state.js"
   },
   "engines": {
     "node": ">=20 <23"

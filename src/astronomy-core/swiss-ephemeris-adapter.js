@@ -77,6 +77,15 @@ export function calculateBody(julianDay, bodyId) {
   };
 }
 
+export function calculateLongitudeSpeed(julianDay, bodyId) {
+  const ecliptic = validateResult(
+    calc_ut(julianDay, bodyId, DEFAULT_FLAGS),
+    "calculateLongitudeSpeed/ecliptic",
+  );
+
+  return ecliptic.data[3];
+}
+
 export function calculateFixedStar(julianDay, starName) {
   const ecliptic = validateResult(
     fixstar2_ut(starName, julianDay, DEFAULT_FLAGS),
