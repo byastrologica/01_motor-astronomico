@@ -1,5 +1,12 @@
 # Changelog
 
+## Closeout traceability correction - 2026-07-31
+
+- Clarified that `Code changed = NO` applied only to the documentary closeout;
+  functional implementation is commit `84ccaee71cf5bd2e98d4a0cc046dbbb98e7a37f7`.
+- Added the reproduced A-F matrix, functional files and separation between
+  method homologation, technical implementation and documentary registration.
+
 ## Closeout - 2026-07-31
 
 - Registered the final technical and operational homologation of `PLANETARY_STATIONARY_STATE_V1`, `ASTRODIENST_STATIONARY_PROFILE_V1` and `STATION_SEARCH_CONFIG_V1` in `docs/PLANETARY_STATIONARY_STATE_V1_CLOSEOUT.md`.
