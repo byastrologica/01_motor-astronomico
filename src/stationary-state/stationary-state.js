@@ -361,6 +361,10 @@ export function calculateStationaryState({
       searchWindowExpansions: Math.max(previousResult.expansions ?? 0, nextResult.expansions ?? 0),
       previousSearchedDays: previousResult.searchedDays ?? null,
       nextSearchedDays: nextResult.searchedDays ?? null,
+      previousSearchSource: cached.previous ? "CACHE" : "ROOT_SEARCH",
+      nextSearchSource: cached.next ? "CACHE" : "ROOT_SEARCH",
+      previousEventDistanceDays: previous ? previous.distanceHours / 24 : null,
+      nextEventDistanceDays: next ? next.distanceHours / 24 : null,
       previousSearchEndUtc: Number.isFinite(previousResult.searchEndJulianDay)
         ? julianDayToUtc(previousResult.searchEndJulianDay)
         : null,

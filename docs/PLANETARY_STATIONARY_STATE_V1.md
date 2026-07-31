@@ -45,4 +45,13 @@ The implemented state rule is `THRESHOLD_WINDOW_WITH_CONFIRMED_EXACT_STATION`:
 
 `EXACT_ROOT_INSTANT_ONLY` is not the implemented policy.
 
+Directional audit semantics distinguish work from evidence:
+
+- `previousSearchSource` / `nextSearchSource` identify `CACHE` or `ROOT_SEARCH`;
+- `previousSearchedDays` / `nextSearchedDays` report work performed in the current request;
+- `previousEventDistanceDays` / `nextEventDistanceDays` report astronomical distance to the recovered event.
+
+A warm-cache request may therefore report `searchedDays = 0` while preserving
+the event-distance evidence explicitly.
+
 The original Venus maximum search window remains 400 days pending formal calibration approval. A 1982 reference chart proved the next station at approximately 477 days, and an annual 1900-2100 sample found adjacent-station distances up to approximately 584 days. The proposed technical calibration is 600 days; it is not applied by this evidence-only update.

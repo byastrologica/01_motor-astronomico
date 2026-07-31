@@ -36,6 +36,9 @@ test("v1 permanece sem o novo contrato e v2 e aditivo", async () => {
   assert.equal(venus.motionAudit.searchStepHours, 12);
   assert.ok(Number.isFinite(venus.motionAudit.previousSearchedDays));
   assert.ok(Number.isFinite(venus.motionAudit.nextSearchedDays));
+  assert.match(venus.motionAudit.previousSearchSource, /^(CACHE|ROOT_SEARCH)$/);
+  assert.match(venus.motionAudit.nextSearchSource, /^(CACHE|ROOT_SEARCH)$/);
+  assert.ok(Number.isFinite(venus.motionAudit.previousEventDistanceDays));
   assert.match(venus.motionAudit.previousSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
   assert.match(venus.motionAudit.nextSearchEndUtc, /^\d{4}-\d{2}-\d{2}T/);
 });

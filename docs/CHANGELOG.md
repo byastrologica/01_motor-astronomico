@@ -1,5 +1,6 @@
 # Changelog
 
+- Clarified stationary-state audit semantics by separating directional `CACHE`/`ROOT_SEARCH` source, current-request searched days, and astronomical event-distance days. No calculation policy, threshold, search profile, or V1 endpoint changed.
 - Added closure audit fields for directional station-search coverage and separated cold/prebuild versus warm-cache benchmark evidence.
 
 ## 1.1.0 - 2026-07-31
