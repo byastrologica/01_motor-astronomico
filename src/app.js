@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import {calculateAngularWindows,AngularWindowInputError} from './astronomy-core/angular-windows.js';
 
 import {
   generateRawChart,
@@ -45,6 +46,11 @@ app.post("/v1/chart", (request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.post('/v1/angular-windows',(request,response,next)=>{
+  try{response.status(200).json(calculateAngularWindows(request.body));}
+  catch(error){if(error instanceof AngularWindowInputError)return response.status(400).json({error:'INVALID_ANGULAR_WINDOW_QUERY',message:error.message});next(error);}
 });
 
 app.post("/v2/chart", (request, response, next) => {
