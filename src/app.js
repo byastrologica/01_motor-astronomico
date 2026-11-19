@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import {calculateAngularWindows,AngularWindowInputError} from './astronomy-core/angular-windows.js';
 import {calculateTemporalWindows,TemporalContractError} from './astronomy-core/temporal-windows.js';
+import {scanObservationEvents,ObservationInputError} from './observation-events/scan-events.js';
 
 import {
   generateRawChart,
@@ -14,6 +15,7 @@ const app = express();
 app.disable("x-powered-by");
 app.use(cors());
 app.use('/v1/temporal-windows',express.json({limit:'1mb'}));
+app.use('/v1/observation-events',express.json({limit:'1mb'}));
 app.use(express.json({ limit: "100kb" }));
 
 app.get("/", (request, response) => {
@@ -58,6 +60,10 @@ app.post('/v1/angular-windows',(request,response,next)=>{
 app.post('/v1/temporal-windows',(request,response,next)=>{
   try{response.json(calculateTemporalWindows(request.body));}
   catch(error){if(error instanceof TemporalContractError)return response.status(400).json({error:'INVALID_TEMPORAL_CONTRACT',message:error.message});next(error);}
+});
+app.post('/v1/observation-events',(request,response,next)=>{
+ try{response.json(scanObservationEvents(request.body));}
+ catch(error){if(error instanceof ObservationInputError)return response.status(400).json({error:'INVALID_OBSERVATION_QUERY',message:error.message});next(error);}
 });
 
 app.post("/v2/chart", (request, response, next) => {
