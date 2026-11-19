@@ -4,6 +4,12 @@ import {scanObservationEvents,ObservationInputError} from '../src/observation-ev
 import {createTemporalSampler} from '../src/astronomy-core/temporal-sampler.js';
 import request from 'supertest';
 import app from '../src/app.js';
+import {VISUAL_ORB_POLICY_VERSION} from '../src/observation-events/shared/visual-amplo-policy.js';
+test('visual AMPLO profile expands pair width without changing default scanner',()=>{
+ const sampler=createTemporalSampler({birthTimeKnown:false}),sun=sampler.sample('SOL',Date.parse('2026-01-01T00:30:00Z'));
+ const q={...base,scopes:['TRANSIT_NATAL'],movingBodies:['SOL'],fixedObjects:[{body:'SOL',longitude:sun.longitude},{body:'LUA',longitude:(sun.longitude+9)%360}],aspectDefinitions:[{aspect:'CONJUNCTION',angle:0,orb:6,group:'MAJOR'}]};
+ const old=scanObservationEvents(q),wide=scanObservationEvents({...q,visualOrbPolicy:VISUAL_ORB_POLICY_VERSION});assert.ok(old.events.length);assert.equal(old.events.some(e=>e.frame.aspects.some(a=>a.bodyB==='LUA')),false);assert.ok(wide.events.some(e=>e.frame.aspects.some(a=>a.bodyB==='LUA'&&a.allowedOrb===10)));
+});
 const base={schemaVersion:'SKYNOW_AUTO_REQUEST_V1',startUtc:'2026-01-01T00:00:00Z',endUtc:'2026-01-01T01:00:00Z',movingBodies:['SOL','LUA'],fixedObjects:[],fixedAxes:[],axisIds:[],aspectDefinitions:[{aspect:'SQUARE',angle:90,orb:6,group:'MAJOR'}],scopes:['SKY'],context:{latitude:0,longitude:0,birthTimeKnown:true,axisMode:'NONE'},includeHouses:false,includeGeometries:false,selectionSignature:'synthetic-qa'};
 test('native scanner returns explicit sampling/coverage and respects budgets',()=>{
  const result=scanObservationEvents(base,{maxSteps:2});assert.equal(result.complete,false);assert.equal(result.reason,'SAMPLE_BUDGET');assert.equal(result.coveredThroughUtc,'2026-01-01T00:02:00.000Z');assert.equal(result.coverage.shorterThanSamplingStep,'NOT_CERTIFIED');

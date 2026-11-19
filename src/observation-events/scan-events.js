@@ -4,6 +4,7 @@ import {calculateHouses,calculateObliquity,calculateHousePosition,getEphemerisVe
 import {STATIONARY_PROFILE} from '../stationary-state/stationary-profile.js';
 import {calculateStationaryState} from '../stationary-state/stationary-state.js';
 import {detectVisualGeometries} from './vendor/visual-geometry.js';
+import {visualAmploOrb,VISUAL_ORB_POLICY_VERSION} from './shared/visual-amplo-policy.js';
 const DAY=86400000,norm=x=>((x%360)+360)%360,wrap=x=>norm(x+180)-180;
 const planets=new Set(['SOL','LUA','MERCURIO','VENUS','MARTE','JUPITER','SATURNO','URANO','NETUNO','PLUTAO']);
 const angles=new Set(['ASC','MC','DC','IC']),majors=new Set(['CONJUNCTION','SEXTILE','SQUARE','TRINE','OPPOSITION']);
@@ -37,7 +38,9 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const dynamicAxes=ctx.birthTimeKnown!==false&&ctx.axisMode==='MOVING'?(input.axisIds||[]).filter(id=>angles.has(id)):[];
  const movingIds=[...ids,...dynamicAxes.filter(id=>['ASC','MC'].includes(id))];
  const bodyFilter=(a,b)=>!input.pairFilter||(!input.pairFilter.bodyA||input.pairFilter.bodyA==='ALL'||[a,b].includes(input.pairFilter.bodyA))&&(!input.pairFilter.bodyB||input.pairFilter.bodyB==='ALL'||[a,b].includes(input.pairFilter.bodyB));
- function addPair(a,b,scope){for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;pairs.push({a,b,scope,...d,key:idFor(scope,a,b,d.aspect)});}}
+ const amplo=input.visualOrbPolicy===VISUAL_ORB_POLICY_VERSION;
+ if(input.visualOrbPolicy&&!amplo)throw new ObservationInputError('Política visual incompatível.');
+ function addPair(a,b,scope){for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;const orb=amplo?visualAmploOrb(a,b,d.aspect):d.orb;if(!Number.isFinite(orb))continue;pairs.push({a,b,scope,...d,orb,key:idFor(scope,a,b,d.aspect)});}}
  if(input.scopes?.includes('SKY'))for(let i=0;i<movingIds.length;i++)for(let j=i+1;j<movingIds.length;j++)addPair(movingIds[i],movingIds[j],'SKY');
  if(input.scopes?.includes('TRANSIT_NATAL'))for(const a of ids)for(const b of fixed)addPair(a,b.body,'TRANSIT_NATAL');
  if(pairs.length>18000)throw new ObservationInputError('Seleção de pares excede a capacidade do lote.');
@@ -57,7 +60,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
   const selected=ids.map(id=>({body:id,...objects.get(id)})),geometries=new Map();
   if(input.includeGeometries){
    const types=new Set(defs.map(d=>d.aspect));
-   for(const g of detectVisualGeometries(selected))if(!(input.hiddenGeometryKeys||[]).includes(g.key)&&g.aspects.every(a=>types.has(a.aspect)))geometries.set(g.key,g);
+   for(const g of detectVisualGeometries(selected,amplo?{orbResolver:visualAmploOrb}:{}))if(!(input.hiddenGeometryKeys||[]).includes(g.key)&&g.aspects.every(a=>types.has(a.aspect)))geometries.set(g.key,g);
   }
   const value={t,objects,rows,geometries};cache.set(t,value);if(cache.size>16)cache.delete(cache.keys().next().value);return value;
  }

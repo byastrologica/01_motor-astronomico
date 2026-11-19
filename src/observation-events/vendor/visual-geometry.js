@@ -77,13 +77,13 @@ function bodyLabel(body) {
   return BODY_LABELS[body] || body;
 }
 
-function relationFor(longitudes, bodyA, bodyB, aspect) {
+function resolveRelation(longitudes, bodyA, bodyB, aspect, orbResolver=null) {
   const first = longitudes.get(bodyA);
   const second = longitudes.get(bodyB);
   if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
   const orb = Math.abs(angularDistance(first, second) - ASPECT_ANGLES[aspect]);
   const hasLuminary = [bodyA, bodyB].some((body) => ["SOL", "LUA"].includes(body));
-  const limit = aspect === "CONJUNCTION"
+  const limit = orbResolver?orbResolver(bodyA,bodyB,aspect):aspect === "CONJUNCTION"
     ? (hasLuminary ? VISUAL_GEOMETRY_ORBS_V1.CONJUNCTION_LUMINARY : VISUAL_GEOMETRY_ORBS_V1.CONJUNCTION)
     : aspect === "OPPOSITION"
       ? (hasLuminary ? VISUAL_GEOMETRY_ORBS_V1.OPPOSITION_LUMINARY : VISUAL_GEOMETRY_ORBS_V1.OPPOSITION)
@@ -173,6 +173,7 @@ function makeRecord(name, geometryId, relations, metadata = {}, enforceAverage =
 }
 
 export function detectVisualGeometries(objects, options = {}) {
+  const relationFor=(longitudes,a,b,aspect)=>resolveRelation(longitudes,a,b,aspect,options.orbResolver);
   const includeBarbault = options.includeBarbault !== false;
   const longitudes = new Map();
   for (const item of Array.isArray(objects) ? objects : []) {
