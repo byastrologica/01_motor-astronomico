@@ -20,7 +20,8 @@ function permitted(a,b,type,scope){
 }
 export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents=32}={}){
  const start=Date.parse(input?.startUtc),end=Date.parse(input?.endUtc),ids=input?.movingBodies;
- if(input?.schemaVersion!=='SKYNOW_AUTO_REQUEST_V1'||!Array.isArray(ids)||!ids.length||ids.length>32||new Set(ids).size!==ids.length||ids.some(id=>!isTemporalBody(id)||angles.has(id))||!Number.isFinite(start)||!Number.isFinite(end)||start<Date.UTC(1600,0,1)||end>Date.UTC(2401,0,1)||end<=start||end-start>7*DAY)throw new ObservationInputError('Intervalo Auto inválido: 1600–2400, até sete dias por lote e 32 corpos.');
+ const adaptive=input?.searchStrategy==='ADAPTIVE_PLANETARY_V1';
+ if(input?.schemaVersion!=='SKYNOW_AUTO_REQUEST_V1'||!Array.isArray(ids)||!ids.length||ids.length>32||new Set(ids).size!==ids.length||ids.some(id=>!isTemporalBody(id)||angles.has(id))||!Number.isFinite(start)||!Number.isFinite(end)||start<Date.UTC(1600,0,1)||end>Date.UTC(2401,0,1)||end<=start||end-start>(adaptive?90:7)*DAY)throw new ObservationInputError('Intervalo Auto inválido: 1600–2400, até sete dias (90 no perfil adaptativo) e 32 corpos.');
  const defs=input.aspectDefinitions;
  if(!Array.isArray(defs)||defs.length>20||defs.some(d=>!d||!Number.isFinite(d.angle)||d.angle<0||d.angle>180||!Number.isFinite(d.orb)||d.orb<=0||d.orb>10||typeof d.aspect!=='string'||d.aspect.length>64))throw new ObservationInputError('Definições de aspecto ausentes ou inválidas.');
  const ctx=input.context||{},fixed=input.fixedObjects||[];
@@ -68,6 +69,26 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const changeRoot=(a,b,predicate)=>{let x=a,y=b,v=predicate(a);while(y.t-x.t>1000){const m=at((x.t+y.t)/2);if(predicate(m)===v)x=m;else y=m;}return y;};
  const pending=[],events=[];let covered=start,complete=true,reason=null,steps=0;
  const step=dynamicAxes.length?20000:60000;
+ // Adaptive rollout deliberately limited to ordinary planets without axes or
+ // multi-body figures. Other selections retain the validated fixed scanner.
+ const useAdaptive=adaptive&&ctx.axisMode==='NONE'&&ids.every(id=>planets.has(id))&&(!input.includeGeometries||ids.length<3)&&!fixed.some(p=>angles.has(p.body));
+ const maxAdaptiveStep=ids.includes('LUA')?3600000:21600000;
+ let actualMaximumStep=step;
+ function nextStep(p){
+  if(!useAdaptive)return step;
+  let dt=maxAdaptiveStep;
+  const approach=(distance,velocity)=>{if(Number.isFinite(distance)&&Number.isFinite(velocity)&&Math.abs(velocity)>1e-9)dt=Math.min(dt,Math.max(step,Math.abs(distance/velocity)*DAY*.4));};
+  for(const row of p.rows.values()){
+   const a=p.objects.get(row.a),b=row.scope==='TRANSIT_NATAL'?null:p.objects.get(row.b),velocity=(a.speedLongitude||0)-(b?.speedLongitude||0);
+   approach(row.error,velocity);approach(Math.abs(row.error)-row.limitDegrees,velocity);
+  }
+  for(const id of ids){const o=p.objects.get(id),v=o.speedLongitude,pos=norm(o.longitude)%30;approach(v>=0?30-pos:pos,v);
+   // Refine around stationary bands/zeros without assigning new thresholds.
+   const threshold=STATIONARY_PROFILE.eligibleBodies[id]?.stationaryThresholdArcsecPerDay/3600;
+   if(threshold&&Math.abs(v)<threshold*2)dt=Math.min(dt,3600000);
+  }
+  return Math.round(Math.max(step,dt));
+ }
  const speed=(p,id)=>p.objects.get(id)?.speedLongitude;
  const band=(p,id)=>{const v=speed(p,id),profile=STATIONARY_PROFILE.eligibleBodies[id];return !Number.isFinite(v)?'UNKNOWN':profile&&Math.abs(v)<=profile.stationaryThresholdArcsecPerDay/3600?'STATIONARY_BAND':v<0?'R':'D';};
  function axisLongitude(p,axis){return ctx.axisMode==='FIXED'?(input.fixedAxes||[]).find(a=>a.body===axis)?.longitude:sampler.sample(axis,p.t).longitude;}
@@ -81,7 +102,8 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
   if(steps++>=maxSteps||events.length>=maxEvents){complete=false;reason=events.length>=maxEvents?'EVENT_BUDGET':'SAMPLE_BUDGET';break;}
   pending.length=0;
   try{
-   const next=at(Math.min(end,previous.t+step));
+   const dt=nextStep(previous);actualMaximumStep=Math.max(actualMaximumStep,dt);
+   const next=at(Math.min(end,previous.t+dt));
    for(const [key,a] of previous.rows){
     const b=next.rows.get(key);if(a.branch!==b.branch)continue;
     const meta={relationId:key,bodyA:a.a,bodyB:a.b,aspect:a.aspect,scope:a.scope,limitDegrees:a.limitDegrees,policy:'SKYNOW_VISUAL'};
@@ -129,5 +151,5 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
   event.eventId=crypto.createHash('sha256').update(stable({context:input.context,selection:input.selectionSignature,timestampMs:event.timestampMs,reasons:event.reasons})).digest('hex');
   delete event._snapshot;
  }
- return {schemaVersion:'SKYNOW_AUTO_EVENTS_V1',complete,reason,startUtc:input.startUtc,endUtc:input.endUtc,coveredThroughUtc:new Date(covered).toISOString(),events:grouped,coverage:{maximumSamplingStepMs:step,rootPrecisionMs:1000,shorterThanSamplingStep:'NOT_CERTIFIED',discontinuousDerivedBranches:'NOT_INTERPOLATED',stationaryProfile:STATIONARY_PROFILE.id,ephemerisVersion:getEphemerisVersion(),policy:'SKYNOW_VISUAL_NOT_METHOD_RANKING'},calculationMs:Math.round(performance.now()-begun)};
+ return {schemaVersion:'SKYNOW_AUTO_EVENTS_V1',complete,reason,startUtc:input.startUtc,endUtc:input.endUtc,coveredThroughUtc:new Date(covered).toISOString(),events:grouped,coverage:{searchStrategy:useAdaptive?'ADAPTIVE_PLANETARY_V1':'FIXED_V1',sampledSegments:steps,maximumSamplingStepMs:actualMaximumStep,rootPrecisionMs:1000,shorterThanSamplingStep:'NOT_CERTIFIED',discontinuousDerivedBranches:'NOT_INTERPOLATED',stationaryProfile:STATIONARY_PROFILE.id,ephemerisVersion:getEphemerisVersion(),policy:'SKYNOW_VISUAL_NOT_METHOD_RANKING'},calculationMs:Math.round(performance.now()-begun)};
 }

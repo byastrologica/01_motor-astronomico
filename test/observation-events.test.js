@@ -5,6 +5,13 @@ import {createTemporalSampler} from '../src/astronomy-core/temporal-sampler.js';
 import request from 'supertest';
 import app from '../src/app.js';
 import {VISUAL_ORB_POLICY_VERSION} from '../src/observation-events/shared/visual-amplo-policy.js';
+test('adaptive Neptune Pluto matches fixed event identities/times with fewer samples',()=>{
+ const query={...base,startUtc:'1982-08-07T00:00:00Z',endUtc:'1982-08-14T00:00:00Z',movingBodies:['NETUNO','PLUTAO'],aspectDefinitions:[{aspect:'SEXTILE',angle:60,orb:6,group:'MAJOR'}],includeGeometries:true};
+ const fixed=scanObservationEvents(query,{maxSteps:15000,maxEvents:128}),fast=scanObservationEvents({...query,searchStrategy:'ADAPTIVE_PLANETARY_V1'},{maxEvents:128});assert.equal(fixed.complete,true);assert.equal(fast.complete,true);
+ const events=r=>r.events.flatMap(e=>e.reasons.map(reason=>({type:reason.type,body:reason.body,relationId:reason.relationId,t:e.timestampMs})));
+ const a=events(fixed),b=events(fast);assert.ok(a.length);assert.equal(a.length,b.length);for(let i=0;i<a.length;i++){assert.equal(a[i].type,b[i].type);assert.equal(a[i].relationId,b[i].relationId);assert.ok(Math.abs(a[i].t-b[i].t)<=1000);}
+ assert.ok(fast.coverage.sampledSegments<fixed.coverage.sampledSegments/20);console.log(JSON.stringify({benchmark:'NETUNO_PLUTAO_1982',fixedMs:fixed.calculationMs,adaptiveMs:fast.calculationMs,fixedSegments:fixed.coverage.sampledSegments,adaptiveSegments:fast.coverage.sampledSegments,events:a.length}));
+});
 test('visual AMPLO profile expands pair width without changing default scanner',()=>{
  const sampler=createTemporalSampler({birthTimeKnown:false}),sun=sampler.sample('SOL',Date.parse('2026-01-01T00:30:00Z'));
  const q={...base,scopes:['TRANSIT_NATAL'],movingBodies:['SOL'],fixedObjects:[{body:'SOL',longitude:sun.longitude},{body:'LUA',longitude:(sun.longitude+9)%360}],aspectDefinitions:[{aspect:'CONJUNCTION',angle:0,orb:6,group:'MAJOR'}]};
