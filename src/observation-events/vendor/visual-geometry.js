@@ -173,7 +173,16 @@ function makeRecord(name, geometryId, relations, metadata = {}, enforceAverage =
 }
 
 export function detectVisualGeometries(objects, options = {}) {
-  const relationFor=(longitudes,a,b,aspect)=>resolveRelation(longitudes,a,b,aspect,options.orbResolver);
+  // One immutable sky per detector invocation. Reuse identical directed
+  // relations across triangles/quadrilaterals without sharing between dates.
+  const relationCache=[];
+  const bodyIndex=Object.fromEntries(VISUAL_GEOMETRY_BODIES.map((body,i)=>[body,i]));
+  const aspectIndex={CONJUNCTION:0,OPPOSITION:1,TRINE:2,SQUARE:3,SEXTILE:4,QUINCUNX:5};
+  const relationFor=(longitudes,a,b,aspect)=>{
+    const key=(bodyIndex[a]*10+bodyIndex[b])*6+aspectIndex[aspect];
+    if(relationCache[key]===undefined)relationCache[key]=resolveRelation(longitudes,a,b,aspect,options.orbResolver);
+    return relationCache[key];
+  };
   const includeBarbault = options.includeBarbault !== false;
   const longitudes = new Map();
   for (const item of Array.isArray(objects) ? objects : []) {
