@@ -29,3 +29,13 @@ As geometrias acompanham apenas os corpos móveis; nenhuma regra de figura
 mista natal/trânsito é introduzida.
 
 Teste: `node --test test/observation-events.test.js` (Node 22 + sweph instalado).
+# Auto OOB and stationary transitions (2026-11-25)
+
+OOB_ENTER / OOB_EXIT use the existing SkyNow visual threshold abs(declination)
+> 23.436 degrees, only for selected ordinary planets. This is independent of
+longitudinal D/R/SR/SD. MOTION_CHANGE now reports the existing stationary
+classifier's explicit state, not the generic STATIONARY_BAND display token.
+Events describe forward chronological transitions; reverse playback reverses
+their presentation order, not their astronomical meaning. No orb or sampling
+interval changes. Historical capture files are not retroactively completed.
+

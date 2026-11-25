@@ -90,6 +90,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
   return Math.round(Math.max(step,dt));
  }
  const speed=(p,id)=>p.objects.get(id)?.speedLongitude;
+ const motionState=(p,id)=>calculateStationaryState({bodyId:id,instantJulianDay:p.t/DAY+2440587.5,speedLongitudeDegPerDay:speed(p,id),speedAt:jd=>sampler.sample(id,(jd-2440587.5)*DAY).speedLongitude,ephemeris:'Swiss Ephemeris',allBodiesDeadline:Date.now()+Math.max(0,deadline-performance.now())}).motion.motionState;
  const band=(p,id)=>{const v=speed(p,id),profile=STATIONARY_PROFILE.eligibleBodies[id];return !Number.isFinite(v)?'UNKNOWN':profile&&Math.abs(v)<=profile.stationaryThresholdArcsecPerDay/3600?'STATIONARY_BAND':v<0?'R':'D';};
  function axisLongitude(p,axis){return ctx.axisMode==='FIXED'?(input.fixedAxes||[]).find(a=>a.body===axis)?.longitude:sampler.sample(axis,p.t).longitude;}
  const add=(p,type,detail)=>{
@@ -115,7 +116,12 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
     if(TEMPORAL_ECLIPSES.has(id)||Object.hasOwn(TEMPORAL_STARS,id))continue;
     const a=previous.objects.get(id),b=next.objects.get(id),signA=Math.floor(norm(a.longitude)/30),signB=Math.floor(norm(b.longitude)/30);
     if(signA!==signB)add(changeRoot(previous,next,p=>Math.floor(norm(p.objects.get(id).longitude)/30)),'SIGN_INGRESS',{body:id,from:signA,to:signB});
-    if(band(previous,id)!==band(next,id))add(changeRoot(previous,next,p=>band(p,id)),'MOTION_CHANGE',{body:id,from:band(previous,id),to:band(next,id),profile:STATIONARY_PROFILE.id});
+    if(band(previous,id)!==band(next,id))add(changeRoot(previous,next,p=>band(p,id)),'MOTION_CHANGE',{body:id,from:motionState(previous,id),to:motionState(next,id),profile:STATIONARY_PROFILE.id});
+    const oob=p=>Number.isFinite(p.objects.get(id)?.declination)?Math.abs(p.objects.get(id).declination)>23.436:null;
+    if(planets.has(id)&&oob(previous)!==null&&oob(next)!==null&&oob(previous)!==oob(next)){
+     const root=changeRoot(previous,next,oob);
+     add(root,oob(next)?'OOB_ENTER':'OOB_EXIT',{body:id,from:oob(previous)?'OOB':'IN_BOUNDS',to:oob(next)?'OOB':'IN_BOUNDS',declination:root.objects.get(id).declination,limitDegrees:23.436,policy:'SKYNOW_OOB_23_436'});
+    }
     if(Number.isFinite(a.speedLongitude)&&Number.isFinite(b.speedLongitude)&&(a.speedLongitude*b.speedLongitude<0||b.speedLongitude===0&&a.speedLongitude!==0))add(scalarRoot(previous,next,p=>speed(p,id)),'STATION_EXACT',{body:id,profile:STATIONARY_PROFILE.id});
     if(ctx.birthTimeKnown!==false&&planets.has(id)&&ctx.axisMode!=='NONE')for(const axis of input.axisIds||[]){
      const ea=wrap(a.longitude-axisLongitude(previous,axis)),eb=wrap(b.longitude-axisLongitude(next,axis));

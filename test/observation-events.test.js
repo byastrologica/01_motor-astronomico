@@ -43,7 +43,7 @@ test('malformed scopes, dates, axes and duplicate natal IDs are rejected',()=>{
 });
 test('Mercury station preserves canonical SR/R and refines the exact reversal',()=>{
  const r=scanObservationEvents({...base,startUtc:'2026-02-25T00:00:00Z',endUtc:'2026-02-27T00:00:00Z',movingBodies:['MERCURIO'],aspectDefinitions:[]});
- assert.equal(r.complete,true);assert.ok(r.events.some(e=>e.reasons.some(r=>r.type==='MOTION_CHANGE'&&r.to==='STATIONARY_BAND')&&e.frame.moving[0].motion.motionState==='SR'));
+ assert.equal(r.complete,true);assert.ok(r.events.some(e=>e.reasons.some(r=>r.type==='MOTION_CHANGE'&&r.to==='SR')&&e.frame.moving[0].motion.motionState==='SR'));
  const station=r.events.find(e=>e.reasons.some(r=>r.type==='STATION_EXACT'));assert.ok(station);assert.ok(Math.abs(station.timestampMs-Date.parse(station.frame.moving[0].motion.associatedExactStationUtc))<=1000);assert.equal(r.events.at(-1).frame.moving[0].motion.motionState,'R');
 });
 test('transit-natal reciprocal pairs never collapse into one identity',()=>{
