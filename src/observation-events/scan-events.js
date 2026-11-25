@@ -25,6 +25,9 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const defs=input.aspectDefinitions;
  if(!Array.isArray(defs)||defs.length>20||defs.some(d=>!d||!Number.isFinite(d.angle)||d.angle<0||d.angle>180||!Number.isFinite(d.orb)||d.orb<=0||d.orb>10||typeof d.aspect!=='string'||d.aspect.length>64))throw new ObservationInputError('Definições de aspecto ausentes ou inválidas.');
  const ctx=input.context||{},fixed=input.fixedObjects||[];
+ const eventOptions=input.captureEvents||{};
+ const eventFamilies={MOTION_CHANGE:'movement',STATION_EXACT:'movement',OOB_ENTER:'oob',OOB_EXIT:'oob',SIGN_INGRESS:'signIngress',ASPECT_ENTER:'aspectEdges',ASPECT_EXIT:'aspectEdges',ASPECT_EXACT:'exact',PHASE_CHANGE:'phase',GEOMETRY_FORMED:'geometries',GEOMETRY_DISSOLVED:'geometries',AXIS_CROSSING:'axisCrossings'};
+ if(typeof eventOptions!=='object'||Array.isArray(eventOptions)||Object.entries(eventOptions).some(([key,value])=>!['movement','oob','signIngress','aspectEdges','exact','phase','geometries','axisAspects','axisCrossings'].includes(key)||typeof value!=='boolean'))throw new ObservationInputError('Seleção de eventos Auto inválida.');
  if(!Array.isArray(input.scopes)||!input.scopes.length||input.scopes.some(s=>!['SKY','TRANSIT_NATAL'].includes(s))||new Set(input.scopes).size!==input.scopes.length)throw new ObservationInputError('Contextos Auto inválidos.');
  if(!['NONE','MOVING','FIXED'].includes(ctx.axisMode)||typeof ctx.birthTimeKnown!=='boolean')throw new ObservationInputError('Contexto de horário/eixos inválido.');
  if(!Array.isArray(fixed)||fixed.length>40||fixed.some(p=>!p||!isTemporalBody(p.body)||!Number.isFinite(p.longitude)||p.longitude<0||p.longitude>=360)||new Set(fixed.map(p=>p.body)).size!==fixed.length)throw new ObservationInputError('Referência natal inválida.');
@@ -41,7 +44,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const bodyFilter=(a,b)=>!input.pairFilter||(!input.pairFilter.bodyA||input.pairFilter.bodyA==='ALL'||[a,b].includes(input.pairFilter.bodyA))&&(!input.pairFilter.bodyB||input.pairFilter.bodyB==='ALL'||[a,b].includes(input.pairFilter.bodyB));
  const amplo=input.visualOrbPolicy===VISUAL_ORB_POLICY_VERSION;
  if(input.visualOrbPolicy&&!amplo)throw new ObservationInputError('Política visual incompatível.');
- function addPair(a,b,scope){for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;const orb=amplo?visualAmploOrb(a,b,d.aspect):d.orb;if(!Number.isFinite(orb))continue;pairs.push({a,b,scope,...d,orb,key:idFor(scope,a,b,d.aspect)});}}
+ function addPair(a,b,scope){if(eventOptions.axisAspects===false&&(angles.has(a)||angles.has(b)))return;for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;const orb=amplo?visualAmploOrb(a,b,d.aspect):d.orb;if(!Number.isFinite(orb))continue;pairs.push({a,b,scope,...d,orb,key:idFor(scope,a,b,d.aspect)});}}
  if(input.scopes?.includes('SKY'))for(let i=0;i<movingIds.length;i++)for(let j=i+1;j<movingIds.length;j++)addPair(movingIds[i],movingIds[j],'SKY');
  if(input.scopes?.includes('TRANSIT_NATAL'))for(const a of ids)for(const b of fixed)addPair(a,b.body,'TRANSIT_NATAL');
  if(pairs.length>18000)throw new ObservationInputError('Seleção de pares excede a capacidade do lote.');
@@ -94,6 +97,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const band=(p,id)=>{const v=speed(p,id),profile=STATIONARY_PROFILE.eligibleBodies[id];return !Number.isFinite(v)?'UNKNOWN':profile&&Math.abs(v)<=profile.stationaryThresholdArcsecPerDay/3600?'STATIONARY_BAND':v<0?'R':'D';};
  function axisLongitude(p,axis){return ctx.axisMode==='FIXED'?(input.fixedAxes||[]).find(a=>a.body===axis)?.longitude:sampler.sample(axis,p.t).longitude;}
  const add=(p,type,detail)=>{
+  if(eventOptions[eventFamilies[type]]===false)return;
   const row=detail.relationId?p.rows.get(detail.relationId):null;
   const observation=row?{orb:row.orb,longitudeA:p.objects.get(row.a).longitude,longitudeB:(row.scope==='TRANSIT_NATAL'?fixedMap.get(row.b):p.objects.get(row.b)).longitude}:{};
   pending.push({timestampMs:p.t,type,...detail,...observation,_snapshot:{objects:p.objects,rows:new Map([...p.rows].filter(([,r])=>r.inside)),geometries:p.geometries}});
@@ -115,15 +119,15 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
    for(const id of ids){
     if(TEMPORAL_ECLIPSES.has(id)||Object.hasOwn(TEMPORAL_STARS,id))continue;
     const a=previous.objects.get(id),b=next.objects.get(id),signA=Math.floor(norm(a.longitude)/30),signB=Math.floor(norm(b.longitude)/30);
-    if(signA!==signB)add(changeRoot(previous,next,p=>Math.floor(norm(p.objects.get(id).longitude)/30)),'SIGN_INGRESS',{body:id,from:signA,to:signB});
-    if(band(previous,id)!==band(next,id))add(changeRoot(previous,next,p=>band(p,id)),'MOTION_CHANGE',{body:id,from:motionState(previous,id),to:motionState(next,id),profile:STATIONARY_PROFILE.id});
+    if(eventOptions.signIngress!==false&&signA!==signB)add(changeRoot(previous,next,p=>Math.floor(norm(p.objects.get(id).longitude)/30)),'SIGN_INGRESS',{body:id,from:signA,to:signB});
+    if(eventOptions.movement!==false&&band(previous,id)!==band(next,id))add(changeRoot(previous,next,p=>band(p,id)),'MOTION_CHANGE',{body:id,from:motionState(previous,id),to:motionState(next,id),profile:STATIONARY_PROFILE.id});
     const oob=p=>Number.isFinite(p.objects.get(id)?.declination)?Math.abs(p.objects.get(id).declination)>23.436:null;
-    if(planets.has(id)&&oob(previous)!==null&&oob(next)!==null&&oob(previous)!==oob(next)){
+    if(eventOptions.oob!==false&&planets.has(id)&&oob(previous)!==null&&oob(next)!==null&&oob(previous)!==oob(next)){
      const root=changeRoot(previous,next,oob);
      add(root,oob(next)?'OOB_ENTER':'OOB_EXIT',{body:id,from:oob(previous)?'OOB':'IN_BOUNDS',to:oob(next)?'OOB':'IN_BOUNDS',declination:root.objects.get(id).declination,limitDegrees:23.436,policy:'SKYNOW_OOB_23_436'});
     }
-    if(Number.isFinite(a.speedLongitude)&&Number.isFinite(b.speedLongitude)&&(a.speedLongitude*b.speedLongitude<0||b.speedLongitude===0&&a.speedLongitude!==0))add(scalarRoot(previous,next,p=>speed(p,id)),'STATION_EXACT',{body:id,profile:STATIONARY_PROFILE.id});
-    if(ctx.birthTimeKnown!==false&&planets.has(id)&&ctx.axisMode!=='NONE')for(const axis of input.axisIds||[]){
+    if(eventOptions.movement!==false&&Number.isFinite(a.speedLongitude)&&Number.isFinite(b.speedLongitude)&&(a.speedLongitude*b.speedLongitude<0||b.speedLongitude===0&&a.speedLongitude!==0))add(scalarRoot(previous,next,p=>speed(p,id)),'STATION_EXACT',{body:id,profile:STATIONARY_PROFILE.id});
+    if(eventOptions.axisCrossings!==false&&ctx.birthTimeKnown!==false&&planets.has(id)&&ctx.axisMode!=='NONE')for(const axis of input.axisIds||[]){
      const ea=wrap(a.longitude-axisLongitude(previous,axis)),eb=wrap(b.longitude-axisLongitude(next,axis));
      if(Number.isFinite(ea)&&Number.isFinite(eb)&&(ea*eb<0||eb===0&&ea!==0)&&Math.abs(ea-eb)<180)add(scalarRoot(previous,next,p=>wrap(p.objects.get(id).longitude-axisLongitude(p,axis))),'AXIS_CROSSING',{body:id,axis,axisMode:ctx.axisMode});
     }

@@ -31,6 +31,12 @@ mista natal/trânsito é introduzida.
 Teste: `node --test test/observation-events.test.js` (Node 22 + sweph instalado).
 # Auto OOB and stationary transitions (2026-11-25)
 
+Optional captureEvents booleans: movement, oob, signIngress, aspectEdges,
+exact, phase, geometries, axisAspects, axisCrossings. Missing fields preserve
+legacy behavior; false suppresses that event family. Axis aspects are separate
+from axis crossings. The UI only offers capabilities supported by the selected
+bodies and records its frozen selection in capture data.selection.autoEvents.
+
 OOB_ENTER / OOB_EXIT use the existing SkyNow visual threshold abs(declination)
 > 23.436 degrees, only for selected ordinary planets. This is independent of
 longitudinal D/R/SR/SD. MOTION_CHANGE now reports the existing stationary
