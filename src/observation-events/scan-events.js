@@ -6,6 +6,8 @@ import {calculateStationaryState} from '../stationary-state/stationary-state.js'
 import {detectVisualGeometries} from './vendor/visual-geometry.js';
 import {visualAmploOrb,VISUAL_ORB_POLICY_VERSION} from './shared/visual-amplo-policy.js';
 const DAY=86400000,norm=x=>((x%360)+360)%360,wrap=x=>norm(x+180)-180;
+// Fixed Method Astrológica limit used by the Carta/SOP and the SkyNow chart.
+const OOB_LIMIT_DEGREES=23.4367;
 const planets=new Set(['SOL','LUA','MERCURIO','VENUS','MARTE','JUPITER','SATURNO','URANO','NETUNO','PLUTAO']);
 const angles=new Set(['ASC','MC','DC','IC']),majors=new Set(['CONJUNCTION','SEXTILE','SQUARE','TRINE','OPPOSITION']);
 export class ObservationInputError extends Error{}
@@ -121,10 +123,10 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
     const a=previous.objects.get(id),b=next.objects.get(id),signA=Math.floor(norm(a.longitude)/30),signB=Math.floor(norm(b.longitude)/30);
     if(eventOptions.signIngress!==false&&signA!==signB)add(changeRoot(previous,next,p=>Math.floor(norm(p.objects.get(id).longitude)/30)),'SIGN_INGRESS',{body:id,from:signA,to:signB});
     if(eventOptions.movement!==false&&band(previous,id)!==band(next,id))add(changeRoot(previous,next,p=>band(p,id)),'MOTION_CHANGE',{body:id,from:motionState(previous,id),to:motionState(next,id),profile:STATIONARY_PROFILE.id});
-    const oob=p=>Number.isFinite(p.objects.get(id)?.declination)?Math.abs(p.objects.get(id).declination)>23.436:null;
+    const oob=p=>Number.isFinite(p.objects.get(id)?.declination)?Math.abs(p.objects.get(id).declination)>OOB_LIMIT_DEGREES:null;
     if(eventOptions.oob!==false&&planets.has(id)&&oob(previous)!==null&&oob(next)!==null&&oob(previous)!==oob(next)){
      const root=changeRoot(previous,next,oob);
-     add(root,oob(next)?'OOB_ENTER':'OOB_EXIT',{body:id,from:oob(previous)?'OOB':'IN_BOUNDS',to:oob(next)?'OOB':'IN_BOUNDS',declination:root.objects.get(id).declination,limitDegrees:23.436,policy:'SKYNOW_OOB_23_436'});
+     add(root,oob(next)?'OOB_ENTER':'OOB_EXIT',{body:id,from:oob(previous)?'OOB':'IN_BOUNDS',to:oob(next)?'OOB':'IN_BOUNDS',declination:root.objects.get(id).declination,limitDegrees:OOB_LIMIT_DEGREES,policy:'SKYNOW_OOB_23_4367'});
     }
     if(eventOptions.movement!==false&&Number.isFinite(a.speedLongitude)&&Number.isFinite(b.speedLongitude)&&(a.speedLongitude*b.speedLongitude<0||b.speedLongitude===0&&a.speedLongitude!==0))add(scalarRoot(previous,next,p=>speed(p,id)),'STATION_EXACT',{body:id,profile:STATIONARY_PROFILE.id});
     if(eventOptions.axisCrossings!==false&&ctx.birthTimeKnown!==false&&planets.has(id)&&ctx.axisMode!=='NONE')for(const axis of input.axisIds||[]){
