@@ -1,10 +1,58 @@
 import {resolveHDCivilDay,scanHDAspectCatalog} from './hd-day-coverage.js';
 import {createTemporalSampler} from './temporal-sampler.js';
+import {TEMPORAL_ANGLES_BY_ASPECT} from './temporal-window-search.js';
 
 export class HDPreviewInputError extends Error {}
 const signBodies=['SOL','LUA','MERCURIO','VENUS','MARTE','JUPITER','SATURNO','URANO','NETUNO','PLUTAO'];
 const rate=id=>id==='LUA'?25:8;
 const wrap=x=>((x%360)+360)%360;
+
+// Second pass: a fixed one-minute grid with both day boundaries. It checks
+// the adaptive CORE result independently and bounds the worst orb using
+// endpoint cones, not a noon sample or a sampled maximum treated as exact.
+function auditCoreOrbs(day,results,candidates,sample){
+  const byId=new Map(candidates.map(r=>[r.relationId,r]));
+  const entries=results.filter(r=>r.status==='BOUNDED_ESTIMATE'&&r.coverage.core.minMs===day.durationMs)
+    .slice(0,250).map(result=>({result,row:byId.get(result.relationId),previous:null,lower:0,upper:0,ok:true}));
+  if(!entries.length)return;
+  let previousTime=day.startMs;
+  for(let t=day.startMs;;t=Math.min(t+60000,day.endMs)){
+    const cache=new Map();
+    const get=id=>{
+      if(!cache.has(id)){
+        try{cache.set(id,sample(id,t));}catch{cache.set(id,null);}
+      }
+      return cache.get(id);
+    };
+    for(const entry of entries){
+      if(!entry.ok)continue;
+      const {row}=entry,a=get(row.bodyA),b=get(row.bodyB),angle=TEMPORAL_ANGLES_BY_ASPECT[row.aspect];
+      const orb=!a||!b?NaN:row.aspect==='PARALLEL'?Math.abs(a.declination-b.declination)
+        :row.aspect==='CONTRAPARALLEL'?Math.abs(a.declination+b.declination)
+        :Math.abs(Math.abs(wrap(a.longitude-b.longitude+180)-180)-angle);
+      if(!Number.isFinite(orb)||orb>row.coreLimit){entry.ok=false;continue;}
+      entry.lower=Math.max(entry.lower,orb);
+      const bound=(rate(row.bodyA)+rate(row.bodyB))*(t-previousTime)/86400000;
+      if(entry.previous!==null){
+        if(Math.abs(entry.previous-orb)>bound+1e-9){entry.ok=false;continue;}
+        entry.upper=Math.max(entry.upper,(entry.previous+orb+bound)/2+1e-9);
+      }
+      entry.previous=orb;
+    }
+    if(t===day.endMs)break;
+    previousTime=t;
+  }
+  for(const e of entries){
+    if(!e.ok){
+      e.result.status='INCOMPLETE';
+      e.result.failures.push('CORE_DOUBLE_CHECK_FAILED');
+      continue;
+    }
+    e.result.rankingEvidence=e.ok&&e.upper<=e.row.coreLimit&&e.lower<=e.upper&&e.row.coreLimit>0
+      ?{status:'DOUBLE_CHECKED_CORE',worstOrbLower:e.lower,worstOrbUpper:e.upper,allowedOrb:e.row.coreLimit,stepMs:60000}
+      :{status:'NO_VERIFIED_SCORE_INPUT'};
+  }
+}
 function signTimeline(day,id,sample){
   const segments=[];
   let failed=false;
@@ -62,6 +110,7 @@ export function calculateHDPreview(input) {
     throw error;
   }
   const {results,unavailable,...summary}=result;
+  auditCoreOrbs(day,results,catalog.candidates,sample);
   const bodyIds=new Set(catalog.candidates.flatMap(r=>[r.bodyA,r.bodyB]));
   return {...summary,day,unavailable,signTimelines:signBodies.filter(id=>bodyIds.has(id)).map(id=>signTimeline(day,id,sample)),
     items:results.filter(r=>r.status==='BOUNDED_ESTIMATE'&&r.coverage.existence.maxMs>0),
