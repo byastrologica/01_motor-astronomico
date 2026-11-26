@@ -1,9 +1,10 @@
 import {resolveHDCivilDay,scanHDAspectCatalog} from './hd-day-coverage.js';
-import {createTemporalSampler} from './temporal-sampler.js';
+import {createTemporalSampler,TEMPORAL_STARS} from './temporal-sampler.js';
+import {bodyIds as ephemerisBodyIds} from './swiss-ephemeris-adapter.js';
 import {TEMPORAL_ANGLES_BY_ASPECT} from './temporal-window-search.js';
 
 export class HDPreviewInputError extends Error {}
-const signBodies=['SOL','LUA','MERCURIO','VENUS','MARTE','JUPITER','SATURNO','URANO','NETUNO','PLUTAO'];
+const signBodies=new Set([...Object.keys(ephemerisBodyIds),'NODO_SUL',...Object.keys(TEMPORAL_STARS)]);
 const rate=id=>id==='LUA'?25:8;
 const wrap=x=>((x%360)+360)%360;
 
@@ -94,10 +95,14 @@ function signTimeline(day,id,sample){
 
 export function calculateHDPreview(input) {
   const date=input?.date, zone=input?.zone, catalog=input?.catalog;
+  const requestedSignBodies=input?.signBodyIds;
   if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<'1800-01-01'||date>'2399-12-30'||
      typeof zone!=='string'||zone.length>64||catalog?.schemaVersion!=='HD_ASPECT_CANDIDATES_DRAFT_V1'||
      catalog.capturePolicyVersion!=='CAPTURE_TABLE_2026_V3'||
-     !Array.isArray(catalog.candidates)||!catalog.candidates.length||catalog.candidates.length>2400||
+     !Array.isArray(catalog.candidates)||catalog.candidates.length>2400||
+     (requestedSignBodies!==undefined&&(!Array.isArray(requestedSignBodies)||requestedSignBodies.length>32||
+       requestedSignBodies.some(id=>typeof id!=='string'||!/^[A-Z_]{2,40}$/.test(id))))||
+     (!catalog.candidates.length&&!requestedSignBodies?.some(id=>signBodies.has(id)))||
      !Array.isArray(catalog.unavailable)||catalog.unavailable.length>32){
     throw new HDPreviewInputError('Data, fuso ou catálogo inválido para a prévia HD.');
   }
@@ -127,8 +132,8 @@ export function calculateHDPreview(input) {
   }
   const {results,unavailable,...summary}=result;
   auditCapturedOrbs(day,results,catalog.candidates,sample);
-  const bodyIds=new Set(catalog.candidates.flatMap(r=>[r.bodyA,r.bodyB]));
-  return {...summary,day,unavailable,signTimelines:signBodies.filter(id=>bodyIds.has(id)).map(id=>signTimeline(day,id,sample)),
+  const bodyIds=new Set(requestedSignBodies??catalog.candidates.flatMap(r=>[r.bodyA,r.bodyB]));
+  return {...summary,day,unavailable,signTimelines:[...signBodies].filter(id=>bodyIds.has(id)).map(id=>signTimeline(day,id,sample)),
     items:results.filter(r=>r.status==='BOUNDED_ESTIMATE'&&r.coverage.existence.maxMs>0),
     incomplete:results.filter(r=>r.status!=='BOUNDED_ESTIMATE').map(r=>({
       relationId:r.relationId,status:r.status,reason:r.reason??null,failures:r.failures??[],

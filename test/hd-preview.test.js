@@ -22,6 +22,20 @@ test('HD report rejects dates and policies outside the preview',async()=>{
   await request(app).post('/v1/hd-preview/coverage').send({...input,date:'1960-02-31'}).expect(400);
   await request(app).post('/v1/hd-preview/coverage').send({...input,catalog:{...catalog,capturePolicyVersion:'old'}}).expect(400);
 });
+test('HD signs cover supported nonplanet bodies even without aspect candidates',async()=>{
+  const {body}=await request(app).post('/v1/hd-preview/coverage').send({
+    ...input,catalog:{...catalog,candidates:[]},
+    signBodyIds:['NODO_NORTE','NODO_SUL','LILITH_MEDIA','ALDEBARAN','QUIRON','CERES','FORTUNA','ASC','ECLIPSE_SOL_PRE_NATAL'],
+  }).expect(200);
+  assert.deepEqual(new Set(body.signTimelines.map(r=>r.body)),
+    new Set(['NODO_NORTE','NODO_SUL','LILITH_MEDIA','ALDEBARAN','QUIRON','CERES']));
+  for(const row of body.signTimelines){
+    assert.equal(row.status,'BOUNDED_ESTIMATE',row.body);
+    assert.equal(row.segments[0].startMs,body.day.startMs);
+    assert.equal(row.segments.at(-1).endMs,body.day.endMs);
+  }
+  assert.deepEqual(body.items,[]);
+});
 test('day-long captures carry verified worst-orb bounds even across CORE/AMPLO transitions',async()=>{
   const catalogAtFixture={...catalog,candidates:[...catalog.candidates,
     {bodyA:'JUPITER',bodyB:'SATURNO',aspect:'CONJUNCTION',relationId:'JUPITER__SATURNO__CONJUNCTION',coreLimit:3,captureLimit:10},
