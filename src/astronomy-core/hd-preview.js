@@ -1,11 +1,11 @@
 import {resolveHDCivilDay,scanHDAspectCatalog} from './hd-day-coverage.js';
-import {createTemporalSampler,TEMPORAL_STARS} from './temporal-sampler.js';
+import {createTemporalSampler,TEMPORAL_STARS,TEMPORAL_ECLIPSES} from './temporal-sampler.js';
 import {bodyIds as ephemerisBodyIds} from './swiss-ephemeris-adapter.js';
 import {TEMPORAL_ANGLES_BY_ASPECT} from './temporal-window-search.js';
 
 export class HDPreviewInputError extends Error {}
 const signBodies=new Set([...Object.keys(ephemerisBodyIds),'NODO_SUL',...Object.keys(TEMPORAL_STARS)]);
-const rate=id=>id==='LUA'?25:8;
+const rate=id=>TEMPORAL_ECLIPSES.has(id)?0:id==='LUA'?25:8;
 const wrap=x=>((x%360)+360)%360;
 
 // Second pass: a fixed one-minute grid with both day boundaries. It checks
@@ -96,30 +96,45 @@ function signTimeline(day,id,sample){
 export function calculateHDPreview(input) {
   const date=input?.date, zone=input?.zone, catalog=input?.catalog;
   const requestedSignBodies=input?.signBodyIds;
+  const eclipses=input?.fixedEclipses??[];
   if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<'1800-01-01'||date>'2399-12-30'||
      typeof zone!=='string'||zone.length>64||catalog?.schemaVersion!=='HD_ASPECT_CANDIDATES_DRAFT_V1'||
      catalog.capturePolicyVersion!=='CAPTURE_TABLE_2026_V3'||
      !Array.isArray(catalog.candidates)||catalog.candidates.length>2400||
      (requestedSignBodies!==undefined&&(!Array.isArray(requestedSignBodies)||requestedSignBodies.length>32||
        requestedSignBodies.some(id=>typeof id!=='string'||!/^[A-Z_]{2,40}$/.test(id))))||
-     (!catalog.candidates.length&&!requestedSignBodies?.some(id=>signBodies.has(id)))||
+     !Array.isArray(eclipses)||eclipses.length>4||
+     (!catalog.candidates.length&&!eclipses.length&&!requestedSignBodies?.some(id=>signBodies.has(id)))||
      !Array.isArray(catalog.unavailable)||catalog.unavailable.length>32){
     throw new HDPreviewInputError('Data, fuso ou catálogo inválido para a prévia HD.');
   }
+  if(eclipses.some(e=>!TEMPORAL_ECLIPSES.has(e?.id)||
+     !Number.isFinite(e.longitude)||e.longitude<0||e.longitude>=360||
+     !Number.isFinite(e.eclipseJulianDay))||new Set(eclipses.map(e=>e.id)).size!==eclipses.length)
+    throw new HDPreviewInputError('Referência de eclipse HD inválida.');
   for(const row of catalog.candidates){
     if(!row||![row.bodyA,row.bodyB,row.aspect].every(v=>typeof v==='string'&&/^[A-Z_]{2,40}$/.test(v))||
-       [row.bodyA,row.bodyB].some(v=>v.startsWith('ECLIPSE_'))||
+       [row.bodyA,row.bodyB].some(v=>v.startsWith('ECLIPSE_')&&!eclipses.some(e=>e.id===v))||
        !Number.isFinite(row.captureLimit)||row.captureLimit<=0||row.captureLimit>10||
        (row.coreLimit!==null&&(!Number.isFinite(row.coreLimit)||row.coreLimit<0||row.coreLimit>row.captureLimit))){
       throw new HDPreviewInputError('Uma ou mais relações não pertencem ao escopo da prévia.');
     }
   }
   if(new Set(catalog.candidates.flatMap(r=>[r.bodyA,r.bodyB])).size>32)throw new HDPreviewInputError('Universo HD excede 32 corpos.');
-  let day, result;
-  const {sample}=createTemporalSampler({birthTimeKnown:false});
+  let day, result, effectiveCatalog, acceptedEclipses, sample;
   try{
     day=resolveHDCivilDay(date,zone);
-    result=scanHDAspectCatalog(day,catalog,sample,{
+    acceptedEclipses=eclipses.filter(e=>{
+      const eventMs=Math.round((e.eclipseJulianDay-2440587.5)*86400000);
+      return e.id.endsWith('_PRE_NATAL')?eventMs<day.startMs:eventMs>=day.endMs;
+    });
+    const rejected=eclipses.filter(e=>!acceptedEclipses.includes(e));
+    effectiveCatalog={...catalog,
+      candidates:catalog.candidates.filter(r=>!rejected.some(e=>e.id===r.bodyA||e.id===r.bodyB)),
+      unavailable:[...catalog.unavailable,...rejected.map(e=>({body:e.id,reason:'ECLIPSE_NATAL_DIRECTION_NOT_CONFIRMED_HD'}))],
+    };
+    ({sample}=createTemporalSampler({birthTimeKnown:false,fixedEclipses:acceptedEclipses}));
+    result=scanHDAspectCatalog(day,effectiveCatalog,sample,{
       precisionMs:30_000,maxSamples:3500,maxTotalSamples:65_000,
       rateOptionsFor(row){
         return {maxOrbRateDegreesPerDay:rate(row.bodyA)+rate(row.bodyB),
@@ -131,9 +146,12 @@ export function calculateHDPreview(input) {
     throw error;
   }
   const {results,unavailable,...summary}=result;
-  auditCapturedOrbs(day,results,catalog.candidates,sample);
+  auditCapturedOrbs(day,results,effectiveCatalog.candidates,sample);
   const bodyIds=new Set(requestedSignBodies??catalog.candidates.flatMap(r=>[r.bodyA,r.bodyB]));
-  return {...summary,day,unavailable,signTimelines:[...signBodies].filter(id=>bodyIds.has(id)).map(id=>signTimeline(day,id,sample)),
+  const signTimelines=[...signBodies].filter(id=>bodyIds.has(id)).map(id=>signTimeline(day,id,sample));
+  for(const e of acceptedEclipses)signTimelines.push({body:e.id,status:'BOUNDED_ESTIMATE',
+    segments:[{startMs:day.startMs,endMs:day.endMs,sign:Math.floor(e.longitude/30)}]});
+  return {...summary,day,unavailable,signTimelines,
     items:results.filter(r=>r.status==='BOUNDED_ESTIMATE'&&r.coverage.existence.maxMs>0),
     incomplete:results.filter(r=>r.status!=='BOUNDED_ESTIMATE').map(r=>({
       relationId:r.relationId,status:r.status,reason:r.reason??null,failures:r.failures??[],

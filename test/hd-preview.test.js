@@ -36,6 +36,23 @@ test('HD signs cover supported nonplanet bodies even without aspect candidates',
   }
   assert.deepEqual(body.items,[]);
 });
+test('multiple eclipse references stay independent and same-day direction is not presumed',async()=>{
+  const pre='ECLIPSE_SOL_PRE_NATAL',post='ECLIPSE_SOL_POS_NATAL',ambiguous='ECLIPSE_LUA_PRE_NATAL';
+  const fixedEclipses=[
+    {id:pre,longitude:280,eclipseJulianDay:2451543.5},
+    {id:post,longitude:280,eclipseJulianDay:2451545.5},
+    {id:ambiguous,longitude:280,eclipseJulianDay:2451545},
+  ];
+  const candidates=fixedEclipses.map(e=>({bodyA:e.id,bodyB:'SOL',aspect:'CONJUNCTION',
+    relationId:`${e.id}__SOL__CONJUNCTION`,coreLimit:2,captureLimit:3}));
+  const {body}=await request(app).post('/v1/hd-preview/coverage').send({
+    date:'2000-01-01',zone:'UTC',fixedEclipses,catalog:{...catalog,candidates},
+  }).expect(200);
+  assert.deepEqual(body.signTimelines.filter(r=>r.body.startsWith('ECLIPSE')).map(r=>r.body),[pre,post]);
+  assert.deepEqual(body.unavailable,[{body:ambiguous,reason:'ECLIPSE_NATAL_DIRECTION_NOT_CONFIRMED_HD'}]);
+  assert.equal(body.items.length,2);
+  assert(body.items.every(r=>r.coverage.existence.minMs===body.day.durationMs));
+});
 test('day-long captures carry verified worst-orb bounds even across CORE/AMPLO transitions',async()=>{
   const catalogAtFixture={...catalog,candidates:[...catalog.candidates,
     {bodyA:'JUPITER',bodyB:'SATURNO',aspect:'CONJUNCTION',relationId:'JUPITER__SATURNO__CONJUNCTION',coreLimit:3,captureLimit:10},
