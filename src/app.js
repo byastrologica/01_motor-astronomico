@@ -3,6 +3,7 @@ import cors from "cors";
 import {calculateAngularWindows,AngularWindowInputError} from './astronomy-core/angular-windows.js';
 import {calculateTemporalWindows,TemporalContractError} from './astronomy-core/temporal-windows.js';
 import {scanObservationEvents,ObservationInputError} from './observation-events/scan-events.js';
+import {calculateHDPreview,HDPreviewInputError} from './astronomy-core/hd-preview.js';
 
 import {
   generateRawChart,
@@ -16,6 +17,7 @@ app.disable("x-powered-by");
 app.use(cors());
 app.use('/v1/temporal-windows',express.json({limit:'1mb'}));
 app.use('/v1/observation-events',express.json({limit:'1mb'}));
+app.use('/v1/hd-preview/coverage',express.json({limit:'600kb'}));
 app.use(express.json({ limit: "100kb" }));
 
 app.get("/", (request, response) => {
@@ -64,6 +66,11 @@ app.post('/v1/temporal-windows',(request,response,next)=>{
 app.post('/v1/observation-events',(request,response,next)=>{
  try{response.json(scanObservationEvents(request.body));}
  catch(error){if(error instanceof ObservationInputError)return response.status(400).json({error:'INVALID_OBSERVATION_QUERY',message:error.message});next(error);}
+});
+
+app.post('/v1/hd-preview/coverage',(request,response,next)=>{
+  try{return response.json(calculateHDPreview(request.body));}
+  catch(error){if(error instanceof HDPreviewInputError)return response.status(400).json({error:'INVALID_HD_PREVIEW',message:error.message});next(error);}
 });
 
 app.post("/v2/chart", (request, response, next) => {
