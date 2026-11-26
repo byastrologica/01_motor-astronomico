@@ -22,7 +22,7 @@ test('HD report rejects dates and policies outside the preview',async()=>{
   await request(app).post('/v1/hd-preview/coverage').send({...input,date:'1960-02-31'}).expect(400);
   await request(app).post('/v1/hd-preview/coverage').send({...input,catalog:{...catalog,capturePolicyVersion:'old'}}).expect(400);
 });
-test('only day-long CORE receives double-checked maximum-orb bounds',async()=>{
+test('day-long captures carry verified worst-orb bounds even across CORE/AMPLO transitions',async()=>{
   const catalogAtFixture={...catalog,candidates:[...catalog.candidates,
     {bodyA:'JUPITER',bodyB:'SATURNO',aspect:'CONJUNCTION',relationId:'JUPITER__SATURNO__CONJUNCTION',coreLimit:3,captureLimit:10},
   ]};
@@ -30,9 +30,13 @@ test('only day-long CORE receives double-checked maximum-orb bounds',async()=>{
   const variable=body.items.find(r=>r.relationId==='LUA__VENUS__SQUARE');
   assert.equal(variable.coverage.existence.minPercent,100);
   assert.equal(variable.rankingEvidence,undefined);
+  assert.equal(variable.fullDayRankingEvidence.state,'CORE_AND_AMPLO');
+  assert(variable.fullDayRankingEvidence.worstOrbLower>3);
+  assert(variable.fullDayRankingEvidence.worstOrbUpper<=10);
   const integral=body.items.find(r=>r.relationId==='JUPITER__SATURNO__CONJUNCTION');
   assert.equal(integral.coverage.core.minPercent,100);
   assert.equal(integral.rankingEvidence.status,'DOUBLE_CHECKED_CORE');
+  assert.equal(integral.fullDayRankingEvidence.state,'CORE');
   assert(integral.rankingEvidence.worstOrbLower>1.6);
   assert(integral.rankingEvidence.worstOrbUpper>=integral.rankingEvidence.worstOrbLower);
 });
