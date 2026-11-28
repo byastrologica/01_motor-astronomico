@@ -29,7 +29,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const ctx=input.context||{},fixed=input.fixedObjects||[];
  const eventOptions=input.captureEvents||{};
  const eventFamilies={MOTION_CHANGE:'movement',STATION_EXACT:'movement',OOB_ENTER:'oob',OOB_EXIT:'oob',SIGN_INGRESS:'signIngress',ASPECT_ENTER:'aspectEdges',ASPECT_EXIT:'aspectEdges',ASPECT_EXACT:'exact',PHASE_CHANGE:'phase',GEOMETRY_FORMED:'geometries',GEOMETRY_DISSOLVED:'geometries',AXIS_CROSSING:'axisCrossings'};
- if(typeof eventOptions!=='object'||Array.isArray(eventOptions)||Object.entries(eventOptions).some(([key,value])=>!['movement','oob','signIngress','aspectEdges','exact','phase','geometries','axisAspects','axisCrossings'].includes(key)||typeof value!=='boolean'))throw new ObservationInputError('Seleção de eventos Auto inválida.');
+ if(typeof eventOptions!=='object'||Array.isArray(eventOptions)||Object.entries(eventOptions).some(([key,value])=>!['movement','oob','signIngress','aspectEdges','exact','phase','geometries','moonAspects','axisAspects','axisCrossings'].includes(key)||typeof value!=='boolean'))throw new ObservationInputError('Seleção de eventos Auto inválida.');
  if(!Array.isArray(input.scopes)||!input.scopes.length||input.scopes.some(s=>!['SKY','TRANSIT_NATAL'].includes(s))||new Set(input.scopes).size!==input.scopes.length)throw new ObservationInputError('Contextos Auto inválidos.');
  if(!['NONE','MOVING','FIXED'].includes(ctx.axisMode)||typeof ctx.birthTimeKnown!=='boolean')throw new ObservationInputError('Contexto de horário/eixos inválido.');
  if(!Array.isArray(fixed)||fixed.length>40||fixed.some(p=>!p||!isTemporalBody(p.body)||!Number.isFinite(p.longitude)||p.longitude<0||p.longitude>=360)||new Set(fixed.map(p=>p.body)).size!==fixed.length)throw new ObservationInputError('Referência natal inválida.');
@@ -46,7 +46,7 @@ export function scanObservationEvents(input,{maxMs=15000,maxSteps=4500,maxEvents
  const bodyFilter=(a,b)=>!input.pairFilter||(!input.pairFilter.bodyA||input.pairFilter.bodyA==='ALL'||[a,b].includes(input.pairFilter.bodyA))&&(!input.pairFilter.bodyB||input.pairFilter.bodyB==='ALL'||[a,b].includes(input.pairFilter.bodyB));
  const amplo=input.visualOrbPolicy===VISUAL_ORB_POLICY_VERSION;
  if(input.visualOrbPolicy&&!amplo)throw new ObservationInputError('Política visual incompatível.');
- function addPair(a,b,scope){if(eventOptions.axisAspects===false&&(angles.has(a)||angles.has(b)))return;for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;const orb=amplo?visualAmploOrb(a,b,d.aspect):d.orb;if(!Number.isFinite(orb))continue;pairs.push({a,b,scope,...d,orb,key:idFor(scope,a,b,d.aspect)});}}
+ function addPair(a,b,scope){if(eventOptions.moonAspects===false&&(a==='LUA'||b==='LUA'))return;if(eventOptions.axisAspects===false&&(angles.has(a)||angles.has(b)))return;for(const d of defs){if(!permitted(a,b,d.aspect,scope)||!bodyFilter(a,b))continue;const orb=amplo?visualAmploOrb(a,b,d.aspect):d.orb;if(!Number.isFinite(orb))continue;pairs.push({a,b,scope,...d,orb,key:idFor(scope,a,b,d.aspect)});}}
  if(input.scopes?.includes('SKY'))for(let i=0;i<movingIds.length;i++)for(let j=i+1;j<movingIds.length;j++)addPair(movingIds[i],movingIds[j],'SKY');
  if(input.scopes?.includes('TRANSIT_NATAL'))for(const a of ids)for(const b of fixed)addPair(a,b.body,'TRANSIT_NATAL');
  if(pairs.length>18000)throw new ObservationInputError('Seleção de pares excede a capacidade do lote.');

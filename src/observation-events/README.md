@@ -32,7 +32,9 @@ Teste: `node --test test/observation-events.test.js` (Node 22 + sweph instalado)
 # Auto OOB and stationary transitions (2026-11-25)
 
 Optional captureEvents booleans: movement, oob, signIngress, aspectEdges,
-exact, phase, geometries, axisAspects, axisCrossings. Missing fields preserve
+exact, phase, geometries, moonAspects, axisAspects, axisCrossings. With moonAspects=false,
+lunar pairs are not scanned in either scope; lunar positions, sign changes, OOB and
+the independent geometry detector remain available. Missing fields preserve
 legacy behavior; false suppresses that event family. Axis aspects are separate
 from axis crossings. The UI only offers capabilities supported by the selected
 bodies and records its frozen selection in capture data.selection.autoEvents.

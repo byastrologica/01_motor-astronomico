@@ -51,6 +51,19 @@ test('transit-natal reciprocal pairs never collapse into one identity',()=>{
  const q={...base,scopes:['TRANSIT_NATAL'],fixedObjects:[{body:'SOL',longitude:moon.longitude},{body:'LUA',longitude:sun.longitude}],aspectDefinitions:[{aspect:'CONJUNCTION',angle:0,orb:6,group:'MAJOR'}]};
  const result=scanObservationEvents(q),exact=result.events.flatMap(e=>e.reasons).filter(r=>r.type==='ASPECT_EXACT');assert.ok(exact.some(r=>r.bodyA==='SOL'&&r.bodyB==='LUA'));assert.ok(exact.some(r=>r.bodyA==='LUA'&&r.bodyB==='SOL'));assert.equal(new Set(exact.map(r=>r.relationId)).size,2);
 });
+test('moonAspects opt-out removes lunar pairs in both scopes without removing the Moon',()=>{
+ const sampler=createTemporalSampler(base.context),mid=Date.parse('2026-01-01T00:30:00Z'),sun=sampler.sample('SOL',mid),moon=sampler.sample('LUA',mid),delta=((sun.longitude-moon.longitude)%360+360)%360;
+ const q={...base,scopes:['SKY','TRANSIT_NATAL'],fixedObjects:[{body:'MERCURIO',longitude:sun.longitude},{body:'LUA',longitude:sun.longitude}],aspectDefinitions:[{aspect:'CONJUNCTION',angle:0,orb:6,group:'MAJOR'},{aspect:'QA_EXACT',angle:Math.min(delta,360-delta),orb:6,group:'MAJOR'}]};
+ const aspected=r=>r.events.flatMap(event=>event.reasons).filter(reason=>reason.type==='ASPECT_EXACT');
+ const enabled=aspected(scanObservationEvents({...q,captureEvents:{moonAspects:true}}));
+ assert.ok(enabled.some(r=>r.scope==='SKY'&&[r.bodyA,r.bodyB].includes('LUA')));
+ assert.ok(enabled.some(r=>r.scope==='TRANSIT_NATAL'&&r.bodyB==='LUA'));
+ const disabled=scanObservationEvents({...q,captureEvents:{moonAspects:false}});
+ assert.ok(aspected(disabled).some(r=>r.bodyA==='SOL'&&r.bodyB==='MERCURIO'));
+ assert.ok(disabled.events.every(e=>e.reasons.every(r=>![r.bodyA,r.bodyB].includes('LUA'))));
+ assert.ok(disabled.events.some(e=>e.frame.moving.some(p=>p.body==='LUA')));
+ assert.ok(disabled.events.every(e=>e.frame.aspects.every(p=>![p.bodyA,p.bodyB].includes('LUA'))));
+});
 test('existing visual detector forms and dissolves selected geometries between frames',()=>{
  const defs=[['CONJUNCTION',0,6],['OPPOSITION',180,6],['TRINE',120,6],['SQUARE',90,6],['SEXTILE',60,4]].map(([aspect,angle,orb])=>({aspect,angle,orb,group:'MAJOR'}));
  const r=scanObservationEvents({...base,startUtc:'2026-01-02T00:00:00Z',endUtc:'2026-01-03T00:00:00Z',movingBodies:['SOL','LUA','MERCURIO','VENUS','MARTE','JUPITER','SATURNO','URANO','NETUNO','PLUTAO'],includeGeometries:true,aspectDefinitions:defs},{maxEvents:128});
